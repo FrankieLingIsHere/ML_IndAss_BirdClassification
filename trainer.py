@@ -5,6 +5,7 @@ import os
 import time
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim import lr_scheduler
 import numpy as np
@@ -66,6 +67,55 @@ class EarlyStopping:
             return True
         
         return False
+
+
+class FocalLoss(nn.Module):
+    """Focal Loss for addressing class imbalance and hard examples."""
+    
+    def __init__(self, alpha=1.0, gamma=2.0, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+    
+    def forward(self, inputs, targets):
+        ce_loss = F.cross_entropy(inputs, targets, reduction='none')
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * ce_loss
+        
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
+
+class LabelSmoothingCrossEntropy(nn.Module):
+    """Label smoothing cross entropy loss."""
+    
+    def __init__(self, smoothing=0.1):
+        super(LabelSmoothingCrossEntropy, self).__init__()
+        self.smoothing = smoothing
+    
+    def forward(self, inputs, targets):
+        log_prob = F.log_softmax(inputs, dim=-1)
+        weight = inputs.new_ones(inputs.size()) * self.smoothing / (inputs.size(-1) - 1.)
+        weight.scatter_(-1, targets.unsqueeze(-1), (1. - self.smoothing))
+        loss = (-weight * log_prob).sum(dim=-1).mean()
+        return loss
+
+
+def get_loss_function(loss_type='crossentropy', **kwargs):
+    """Get loss function by type."""
+    if loss_type == 'focal':
+        return FocalLoss(alpha=kwargs.get('alpha', 1.0), gamma=kwargs.get('gamma', 2.0))
+    elif loss_type == 'label_smoothing':
+        return LabelSmoothingCrossEntropy(smoothing=kwargs.get('smoothing', 0.1))
+    elif loss_type == 'crossentropy':
+        return nn.CrossEntropyLoss()
+    else:
+        raise ValueError(f"Unknown loss type: {loss_type}")
 
 
 class ModelTrainer:

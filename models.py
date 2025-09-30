@@ -7,6 +7,14 @@ import torch.nn.functional as F
 from torchvision import models
 from typing import Optional
 
+# Try to import EfficientNet
+try:
+    from efficientnet_pytorch import EfficientNet
+    EFFICIENTNET_AVAILABLE = True
+except ImportError:
+    EFFICIENTNET_AVAILABLE = False
+    print("EfficientNet not available. Install with: pip install efficientnet-pytorch")
+
 
 class BirdClassifier(nn.Module):
     """
@@ -40,10 +48,22 @@ class BirdClassifier(nn.Module):
             self.backbone = models.resnet18(pretrained=pretrained)
             num_features = self.backbone.fc.in_features
             self.backbone.fc = nn.Identity()
+        elif architecture == 'resnet101':
+            self.backbone = models.resnet101(pretrained=pretrained)
+            num_features = self.backbone.fc.in_features
+            self.backbone.fc = nn.Identity()
         elif architecture == 'efficientnet_b0':
             self.backbone = models.efficientnet_b0(pretrained=pretrained)
             num_features = self.backbone.classifier[1].in_features
             self.backbone.classifier = nn.Identity()
+        elif architecture in ['efficientnet_b1', 'efficientnet_b2', 'efficientnet_b3', 'efficientnet_b4'] and EFFICIENTNET_AVAILABLE:
+            model_name = architecture.replace('_', '-')
+            if pretrained:
+                self.backbone = EfficientNet.from_pretrained(model_name)
+            else:
+                self.backbone = EfficientNet.from_name(model_name)
+            num_features = self.backbone._fc.in_features
+            self.backbone._fc = nn.Identity()
         else:
             raise ValueError(f"Unsupported architecture: {architecture}")
         
@@ -52,15 +72,21 @@ class BirdClassifier(nn.Module):
             for param in self.backbone.parameters():
                 param.requires_grad = False
         
-        # Custom classifier head with dropout for overfitting prevention
+        # Enhanced classifier head with batch normalization and progressive dimension reduction
         self.classifier = nn.Sequential(
             nn.Dropout(p=dropout_rate),
-            nn.Linear(num_features, 512),
+            nn.Linear(num_features, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout_rate),
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Dropout(p=dropout_rate),
             nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout_rate),
+            nn.Dropout(p=dropout_rate * 0.5),  # Reduced dropout for final layer
             nn.Linear(256, num_classes)
         )
         

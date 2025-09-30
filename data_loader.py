@@ -185,31 +185,65 @@ class BirdDataset(Dataset):
             return dummy_image, label
 
 
-def get_data_transforms(image_size: int = 224, is_training: bool = True):
+def get_data_transforms(image_size: int = 224, is_training: bool = True, augmentation_level: str = 'basic'):
     """
     Get data transforms for training and validation.
     
     Args:
         image_size: Size to resize images to
         is_training: Whether this is for training (includes data augmentation)
+        augmentation_level: Level of augmentation ('basic', 'advanced', 'heavy')
     
     Returns:
         Transform pipeline
     """
     if is_training:
-        transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=15),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-            transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                               std=[0.229, 0.224, 0.225])  # ImageNet stats
-        ])
+        if augmentation_level == 'basic':
+            transform = transforms.Compose([
+                transforms.Resize((image_size, image_size)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=15),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+                transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                                   std=[0.229, 0.224, 0.225])  # ImageNet stats
+            ])
+        elif augmentation_level == 'advanced':
+            transform = transforms.Compose([
+                transforms.Resize((int(image_size * 1.1), int(image_size * 1.1))),
+                transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=20),
+                transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+                transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+                transforms.RandomPerspective(distortion_scale=0.2, p=0.3),
+                transforms.RandomGrayscale(p=0.1),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.RandomErasing(p=0.2, scale=(0.02, 0.2), ratio=(0.3, 3.3))
+            ])
+        elif augmentation_level == 'heavy':
+            transform = transforms.Compose([
+                transforms.Resize((int(image_size * 1.15), int(image_size * 1.15))),
+                transforms.RandomResizedCrop(image_size, scale=(0.7, 1.0), ratio=(0.8, 1.2)),
+                transforms.RandomHorizontalFlip(p=0.5),
+                transforms.RandomRotation(degrees=25),
+                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.15),
+                transforms.RandomAffine(degrees=0, translate=(0.15, 0.15), scale=(0.85, 1.15)),
+                transforms.RandomPerspective(distortion_scale=0.3, p=0.4),
+                transforms.RandomGrayscale(p=0.15),
+                transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                transforms.RandomErasing(p=0.25, scale=(0.02, 0.25), ratio=(0.3, 3.3))
+            ])
+        else:
+            raise ValueError(f"Unknown augmentation level: {augmentation_level}")
     else:
         transform = transforms.Compose([
-            transforms.Resize((image_size, image_size)),
+            transforms.Resize((int(image_size * 1.05), int(image_size * 1.05))),
+            transforms.CenterCrop(image_size),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                                std=[0.229, 0.224, 0.225])
@@ -220,7 +254,7 @@ def get_data_transforms(image_size: int = 224, is_training: bool = True):
 
 def create_data_loaders(train_dir: str, train_txt: str, test_dir: str, test_txt: str, 
                        batch_size: int = 32, image_size: int = 224, num_workers: int = 4,
-                       validation_split: float = 0.2):
+                       validation_split: float = 0.2, augmentation_level: str = 'advanced'):
     """
     Create data loaders for training, validation, and testing.
     
@@ -233,12 +267,13 @@ def create_data_loaders(train_dir: str, train_txt: str, test_dir: str, test_txt:
         image_size: Size to resize images to
         num_workers: Number of workers for data loading
         validation_split: Fraction of training data to use for validation
+        augmentation_level: Level of data augmentation ('basic', 'advanced', 'heavy')
     
     Returns:
         train_loader, val_loader, test_loader, num_classes, class_names
     """
     # Create transforms
-    train_transform = get_data_transforms(image_size, is_training=True)
+    train_transform = get_data_transforms(image_size, is_training=True, augmentation_level=augmentation_level)
     val_test_transform = get_data_transforms(image_size, is_training=False)
     
     # Create full training dataset

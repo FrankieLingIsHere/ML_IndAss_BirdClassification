@@ -74,8 +74,6 @@ demo_results/
 checkpoints/
 *.zip
 *.pth
-*.png
-*.jpg
 *.jpeg
 *.json
 

@@ -19,13 +19,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train Bird Classification Model')
     
     # Data paths
-    parser.add_argument('--train_zip', type=str, default='Train.zip',
-                       help='Path to training images zip file')
-    parser.add_argument('--train_txt', type=str, default='train.txt',
+    parser.add_argument('--train_dir', type=str, default='data/Train',
+                       help='Path to training images directory')
+    parser.add_argument('--train_txt', type=str, default='data/train.txt',
                        help='Path to training annotations file')
-    parser.add_argument('--test_zip', type=str, default='Test.zip',
-                       help='Path to test images zip file')
-    parser.add_argument('--test_txt', type=str, default='test.txt',
+    parser.add_argument('--test_dir', type=str, default='data/Test',
+                       help='Path to test images directory')
+    parser.add_argument('--test_txt', type=str, default='data/test.txt',
                        help='Path to test annotations file')
     
     # Model parameters
@@ -98,24 +98,24 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
     
     # Check if data files exist
-    if not os.path.exists(args.train_zip):
-        print(f"Warning: Training zip file not found: {args.train_zip}")
-        print("Please make sure the Train.zip file is in the current directory.")
+    if not os.path.exists(args.train_dir):
+        print(f"Warning: Training directory not found: {args.train_dir}")
+        print("Please make sure the data/Train directory exists.")
         print("Creating dummy data structure for demonstration...")
         create_dummy_data()
         return
-    
+
     if not os.path.exists(args.train_txt):
         print(f"Warning: Training annotation file not found: {args.train_txt}")
         return
-    
+
     try:
         # Create data loaders
         print("Creating data loaders...")
         train_loader, val_loader, test_loader, num_classes, class_names = create_data_loaders(
-            train_zip=args.train_zip,
+            train_dir=args.train_dir,
             train_txt=args.train_txt,
-            test_zip=args.test_zip,
+            test_dir=args.test_dir,
             test_txt=args.test_txt,
             batch_size=args.batch_size,
             image_size=args.image_size,
@@ -225,13 +225,13 @@ def create_dummy_data():
     dummy_classes = ['Cardinal', 'BlueJay', 'Robin', 'Sparrow', 'Eagle']
     
     # Create train.txt
-    with open('train.txt', 'w') as f:
+    with open('data/train.txt', 'w') as f:
         for i in range(100):
             class_name = dummy_classes[i % len(dummy_classes)]
             f.write(f"train_image_{i:03d}.jpg {class_name}\n")
     
     # Create test.txt
-    with open('test.txt', 'w') as f:
+    with open('data/test.txt', 'w') as f:
         for i in range(50):
             class_name = dummy_classes[i % len(dummy_classes)]
             f.write(f"test_image_{i:03d}.jpg {class_name}\n")
@@ -240,8 +240,8 @@ def create_dummy_data():
     print("- train.txt (100 samples)")
     print("- test.txt (50 samples)")
     print("\nTo use this system with real data:")
-    print("1. Place your Train.zip file in the current directory")
-    print("2. Place your Test.zip file in the current directory")
+    print("1. Place your training images in the data/Train/ directory")
+    print("2. Place your test images in the data/Test/ directory")
     print("3. Ensure train.txt and test.txt follow the format: 'image_name class_label'")
     print("4. Run the training script again")
 

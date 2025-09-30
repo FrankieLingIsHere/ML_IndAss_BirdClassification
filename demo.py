@@ -63,7 +63,7 @@ def create_synthetic_bird_dataset():
             zip_file.write(f'test_images/{filename}', filename)
     
     # Create annotation files
-    with open('train.txt', 'w') as f:
+    with open('data/train.txt', 'w') as f:
         f.write('\n'.join(train_annotations))
     
     with open('test.txt', 'w') as f:

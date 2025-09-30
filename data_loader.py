@@ -1,12 +1,12 @@
 """
 Data loading utilities for bird classification dataset.
-Handles Train.zip/Test.zip and train.txt/test.txt format.
+Handles data/Train/ directory, data/Test/ directory and data/train.txt, data/test.txt format.
 """
 import os
 import zipfile
 from typing import List, Tuple, Dict
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms
 from PIL import Image
 import pandas as pd
@@ -15,41 +15,22 @@ import pandas as pd
 class BirdDataset(Dataset):
     """Dataset class for bird classification."""
     
-    def __init__(self, zip_path: str, annotation_file: str, transform=None, extract_dir: str = None):
+    def __init__(self, image_dir: str, annotation_file: str, transform=None):
         """
         Initialize the dataset.
         
         Args:
-            zip_path: Path to the zip file containing images
+            image_dir: Path to the directory containing images (e.g., 'data/Train' or 'data/Test')
             annotation_file: Path to the annotation text file 
             transform: Image transforms to apply
-            extract_dir: Directory to extract images to (if None, uses temp directory)
         """
-        self.zip_path = zip_path
+        self.image_dir = image_dir
         self.annotation_file = annotation_file
         self.transform = transform
-        
-        # Set extraction directory
-        if extract_dir is None:
-            self.extract_dir = os.path.join(os.path.dirname(zip_path), 
-                                          f"extracted_{os.path.basename(zip_path).replace('.zip', '')}")
-        else:
-            self.extract_dir = extract_dir
-        
-        # Extract images if not already extracted
-        self._extract_images()
         
         # Load annotations
         self.samples, self.class_to_idx, self.classes = self._load_annotations()
         
-    def _extract_images(self):
-        """Extract images from zip file if not already extracted."""
-        if not os.path.exists(self.extract_dir):
-            os.makedirs(self.extract_dir, exist_ok=True)
-            print(f"Extracting {self.zip_path} to {self.extract_dir}")
-            with zipfile.ZipFile(self.zip_path, 'r') as zip_ref:
-                zip_ref.extractall(self.extract_dir)
-    
     def _load_annotations(self) -> Tuple[List[Tuple[str, int]], Dict[str, int], List[str]]:
         """
         Load annotations from text file.
@@ -74,21 +55,66 @@ class BirdDataset(Dataset):
                     parts = line.split()
                     if len(parts) >= 2:
                         image_name = parts[0]
-                        class_label = ' '.join(parts[1:])  # Handle multi-word class names
-                        class_names.add(class_label)
+                        # Try to parse as numeric class index first
+                        try:
+                            class_label = int(parts[1])
+                        except ValueError:
+                            # If not numeric, treat as string class name
+                            class_label = ' '.join(parts[1:])  # Handle multi-word class names
                         samples.append((image_name, class_label))
         
-        # Create class mappings
-        classes = sorted(list(class_names))
-        class_to_idx = {cls: idx for idx, cls in enumerate(classes)}
-        
-        # Convert samples to use class indices
-        indexed_samples = []
-        for image_name, class_label in samples:
-            # Find the actual image path
-            image_path = self._find_image_path(image_name)
-            if image_path:
-                indexed_samples.append((image_path, class_to_idx[class_label]))
+        # Check if we have numeric or string labels
+        first_label = samples[0][1] if samples else None
+        if isinstance(first_label, int):
+            # Numeric labels - extract real class names from image filenames if possible
+            class_idx_to_name = {}
+            
+            # Try to extract class names from training image filenames
+            for image_name, class_idx in samples:
+                if class_idx not in class_idx_to_name:
+                    # Extract species name from filename (before the first underscore followed by digits)
+                    # Example: "Black_footed_Albatross_0004_2731401028.jpg" -> "Black_footed_Albatross"
+                    name_parts = image_name.replace('.jpg', '').split('_')
+                    species_name = ''
+                    for i, part in enumerate(name_parts):
+                        if part.isdigit():
+                            species_name = '_'.join(name_parts[:i])
+                            break
+                    
+                    if species_name:
+                        class_idx_to_name[class_idx] = species_name
+                    else:
+                        class_idx_to_name[class_idx] = f"class_{class_idx}"
+            
+            # Create ordered class names list
+            max_class_idx = max(class_idx_to_name.keys()) if class_idx_to_name else 0
+            classes = []
+            for i in range(max_class_idx + 1):
+                if i in class_idx_to_name:
+                    classes.append(class_idx_to_name[i])
+                else:
+                    classes.append(f"class_{i}")
+            
+            class_to_idx = {cls: idx for idx, cls in enumerate(classes)}
+            
+            # Convert samples to use consistent format (image_path, class_index)
+            indexed_samples = []
+            for image_name, class_idx in samples:
+                image_path = self._find_image_path(image_name)
+                if image_path:
+                    indexed_samples.append((image_path, class_idx))
+        else:
+            # String labels - create class mapping as before
+            class_names = set(sample[1] for sample in samples)
+            classes = sorted(list(class_names))
+            class_to_idx = {cls: idx for idx, cls in enumerate(classes)}
+            
+            # Convert samples to use class indices
+            indexed_samples = []
+            for image_name, class_label in samples:
+                image_path = self._find_image_path(image_name)
+                if image_path:
+                    indexed_samples.append((image_path, class_to_idx[class_label]))
         
         print(f"Loaded {len(indexed_samples)} samples with {len(classes)} classes")
         print(f"Classes: {classes}")
@@ -103,10 +129,10 @@ class BirdDataset(Dataset):
         # Check if image_name already has extension
         if any(image_name.lower().endswith(ext) for ext in extensions):
             possible_paths = [
-                os.path.join(self.extract_dir, image_name),
+                os.path.join(self.image_dir, image_name),
                 # Check subdirectories
                 *[os.path.join(root, image_name) 
-                  for root, dirs, files in os.walk(self.extract_dir) 
+                  for root, dirs, files in os.walk(self.image_dir) 
                   if image_name in files]
             ]
         else:
@@ -115,10 +141,10 @@ class BirdDataset(Dataset):
             for ext in extensions:
                 full_name = image_name + ext
                 possible_paths.extend([
-                    os.path.join(self.extract_dir, full_name),
+                    os.path.join(self.image_dir, full_name),
                     # Check subdirectories
                     *[os.path.join(root, full_name) 
-                      for root, dirs, files in os.walk(self.extract_dir) 
+                      for root, dirs, files in os.walk(self.image_dir) 
                       if full_name in files]
                 ])
         
@@ -128,7 +154,7 @@ class BirdDataset(Dataset):
                 return path
         
         print(f"Warning: Could not find image {image_name}")
-        return None
+        return ""
     
     def __len__(self):
         return len(self.samples)
@@ -137,8 +163,13 @@ class BirdDataset(Dataset):
         image_path, label = self.samples[idx]
         
         try:
-            # Load image
-            image = Image.open(image_path).convert('RGB')
+            # Load image if path exists
+            if image_path and os.path.exists(image_path):
+                image = Image.open(image_path).convert('RGB')
+            else:
+                # Create a dummy image if path is not found
+                dummy_image = Image.new('RGB', (224, 224), 0)  # Black image
+                image = dummy_image
             
             # Apply transforms
             if self.transform:
@@ -148,7 +179,7 @@ class BirdDataset(Dataset):
         except Exception as e:
             print(f"Error loading image {image_path}: {e}")
             # Return a dummy image and label
-            dummy_image = Image.new('RGB', (224, 224), color='black')
+            dummy_image = Image.new('RGB', (224, 224), 0)  # Black image
             if self.transform:
                 dummy_image = self.transform(dummy_image)
             return dummy_image, label
@@ -187,16 +218,16 @@ def get_data_transforms(image_size: int = 224, is_training: bool = True):
     return transform
 
 
-def create_data_loaders(train_zip: str, train_txt: str, test_zip: str, test_txt: str, 
+def create_data_loaders(train_dir: str, train_txt: str, test_dir: str, test_txt: str, 
                        batch_size: int = 32, image_size: int = 224, num_workers: int = 4,
                        validation_split: float = 0.2):
     """
     Create data loaders for training, validation, and testing.
     
     Args:
-        train_zip: Path to training images zip file
+        train_dir: Path to training images directory (e.g., 'data/Train')
         train_txt: Path to training annotations file
-        test_zip: Path to test images zip file  
+        test_dir: Path to test images directory (e.g., 'data/Test')
         test_txt: Path to test annotations file
         batch_size: Batch size for data loaders
         image_size: Size to resize images to
@@ -211,22 +242,22 @@ def create_data_loaders(train_zip: str, train_txt: str, test_zip: str, test_txt:
     val_test_transform = get_data_transforms(image_size, is_training=False)
     
     # Create full training dataset
-    full_train_dataset = BirdDataset(train_zip, train_txt, transform=train_transform)
+    full_train_dataset = BirdDataset(train_dir, train_txt, transform=train_transform)
     
     # Split training data into train and validation
     full_size = len(full_train_dataset)
     val_size = int(validation_split * full_size)
     train_size = full_size - val_size
     
-    train_dataset, val_dataset = torch.utils.data.random_split(
+    train_dataset, val_dataset = random_split(
         full_train_dataset, [train_size, val_size]
     )
     
-    # Update validation dataset transform
-    val_dataset.dataset.transform = val_test_transform
+    # Create separate validation dataset with different transforms
+    val_dataset_with_transform = BirdDataset(train_dir, train_txt, transform=val_test_transform)
     
     # Create test dataset
-    test_dataset = BirdDataset(test_zip, test_txt, transform=val_test_transform)
+    test_dataset = BirdDataset(test_dir, test_txt, transform=val_test_transform)
     
     # Create data loaders
     train_loader = DataLoader(

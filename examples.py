@@ -14,10 +14,10 @@ def example_basic_training():
     
     command = """
 python train.py \\
-    --train_zip Train.zip \\
-    --train_txt train.txt \\
-    --test_zip Test.zip \\
-    --test_txt test.txt
+    --train_dir data/Train \\
+    --train_txt data/train.txt \\
+    --test_dir data/Test \\
+    --test_txt data/test.txt
 """
     
     print("Command:")

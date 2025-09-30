@@ -39,6 +39,18 @@ The system expects the following data structure:
 - `test.txt`: Annotation file with format: `image_name class_label`
 
 ### Example annotation format:
+
+**Option 1: Numeric class indices (current format):**
+```
+Black_footed_Albatross_0004_2731401028.jpg 0
+Black_footed_Albatross_0008_1384283201.jpg 0
+0000.jpg 0
+0001.jpg 1
+0002.jpg 2
+...
+```
+
+**Option 2: String class names (also supported):**
 ```
 bird001.jpg Cardinal
 bird002.jpg BlueJay
@@ -47,12 +59,14 @@ bird004.jpg Cardinal
 ...
 ```
 
+The system automatically detects whether your labels are numeric indices or string class names.
+
 ## Usage
 
 ### Basic Training
 
 ```bash
-python train.py --train_zip Train.zip --train_txt train.txt --test_zip Test.zip --test_txt test.txt
+python train.py --train_dir data/Train --train_txt data/train.txt --test_dir data/Test --test_txt data/test.txt
 ```
 
 ### Advanced Training with Custom Parameters
@@ -75,9 +89,10 @@ python train.py \
 
 #### Data Parameters
 - `--train_zip`: Path to training images zip file (default: 'Train.zip')
-- `--train_txt`: Path to training annotations file (default: 'train.txt')
-- `--test_zip`: Path to test images zip file (default: 'Test.zip')
-- `--test_txt`: Path to test annotations file (default: 'test.txt')
+- `--train_dir`: Path to training images directory (default: 'data/Train')
+- `--train_txt`: Path to training annotations file (default: 'data/train.txt')
+- `--test_dir`: Path to test images directory (default: 'data/Test')
+- `--test_txt`: Path to test annotations file (default: 'data/test.txt')
 
 #### Model Parameters
 - `--model_type`: Model architecture ('resnet50', 'resnet18', 'efficientnet_b0', 'lightweight')
@@ -249,7 +264,7 @@ If data files are not found, the system creates dummy annotation files for demon
 python train.py
 ```
 
-This will create `train.txt` and `test.txt` with dummy data to show the expected format.
+This will create `data/train.txt` and `data/test.txt` with dummy data to show the expected format.
 
 ## Contributing
 

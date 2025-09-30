@@ -6,10 +6,12 @@ import os
 import zipfile
 from typing import List, Tuple, Dict
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader, random_split, Subset
 from torchvision import transforms
 from PIL import Image
 import pandas as pd
+import numpy as np
 
 
 class BirdDataset(Dataset):
@@ -284,12 +286,15 @@ def create_data_loaders(train_dir: str, train_txt: str, test_dir: str, test_txt:
     val_size = int(validation_split * full_size)
     train_size = full_size - val_size
     
-    train_dataset, val_dataset = random_split(
+    train_dataset, temp_val_dataset = random_split(
         full_train_dataset, [train_size, val_size]
     )
     
     # Create separate validation dataset with different transforms
     val_dataset_with_transform = BirdDataset(train_dir, train_txt, transform=val_test_transform)
+    # Get the same indices as temp_val_dataset but with validation transforms
+    val_indices = temp_val_dataset.indices
+    val_dataset = Subset(val_dataset_with_transform, val_indices)
     
     # Create test dataset
     test_dataset = BirdDataset(test_dir, test_txt, transform=val_test_transform)

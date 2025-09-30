@@ -73,20 +73,17 @@ class BirdClassifier(nn.Module):
                 param.requires_grad = False
         
         # Enhanced classifier head with batch normalization and progressive dimension reduction
+        # Reduced complexity to prevent overfitting
         self.classifier = nn.Sequential(
-            nn.Dropout(p=dropout_rate),
-            nn.Linear(num_features, 1024),
-            nn.BatchNorm1d(1024),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout_rate),
-            nn.Linear(1024, 512),
+            nn.Dropout(p=min(dropout_rate * 1.5, 0.7)),  # Increased dropout
+            nn.Linear(num_features, 512),  # Reduced from 1024
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout_rate),
+            nn.Dropout(p=min(dropout_rate * 1.2, 0.6)),
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout_rate * 0.5),  # Reduced dropout for final layer
+            nn.Dropout(p=dropout_rate),
             nn.Linear(256, num_classes)
         )
         

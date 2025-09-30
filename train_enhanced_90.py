@@ -26,9 +26,9 @@ def main():
         'model_type': 'efficientnet_b2',  # Better balance than B3
         'image_size': 288,  # Larger images for more detail
         'batch_size': 16,   # Reduced for stability
-        'dropout_rate': 0.5,  # Increased dropout
-        'learning_rate': 5e-5,  # Lower learning rate
-        'weight_decay': 2e-4,   # Higher weight decay
+        'dropout_rate': 0.4,  # Reduced from 0.5 for better learning
+        'learning_rate': 1e-4,  # Increased from 5e-5
+        'weight_decay': 1e-4,   # Reduced for initial learning
         'num_epochs': 75,       # More epochs
         'augmentation_level': 'advanced',
         'save_dir': './enhanced_results_90',
@@ -83,8 +83,8 @@ def main():
         
         # Enhanced training with multiple phases
         print("\n🎯 Starting Enhanced Multi-Phase Training")
-        print("Phase 1: Classifier warm-up (20 epochs)")
-        print("Phase 2: End-to-end training (55 epochs)")
+        print("Phase 1: Classifier warm-up (15 epochs)")
+        print("Phase 2: End-to-end training (40 epochs)")
         
         # Phase 1: Warm up classifier with frozen backbone
         print("\n--- Phase 1: Classifier Warm-up ---")
@@ -99,11 +99,11 @@ def main():
         
         # Train classifier only
         history_phase1 = trainer.train(
-            num_epochs=20,
-            learning_rate=1e-3,  # Higher LR for classifier
+            num_epochs=15,
+            learning_rate=5e-4,  # Moderate LR for classifier warmup
             weight_decay=args['weight_decay'],
             scheduler_type='cosine',
-            early_stopping_patience=10,
+            early_stopping_patience=8,
             save_dir=os.path.join(args['save_dir'], 'phase1_checkpoints')
         )
         
@@ -116,11 +116,11 @@ def main():
         
         # Fine-tune entire model
         history_phase2 = trainer.train(
-            num_epochs=55,
+            num_epochs=40,
             learning_rate=args['learning_rate'],  # Lower LR for fine-tuning
             weight_decay=args['weight_decay'],
             scheduler_type='cosine',
-            early_stopping_patience=15,
+            early_stopping_patience=12,
             save_dir=os.path.join(args['save_dir'], 'phase2_checkpoints')
         )
         

@@ -73,17 +73,17 @@ class BirdClassifier(nn.Module):
                 param.requires_grad = False
         
         # Enhanced classifier head with batch normalization and progressive dimension reduction
-        # Reduced complexity to prevent overfitting
+        # Balanced regularization for effective learning
         self.classifier = nn.Sequential(
-            nn.Dropout(p=min(dropout_rate * 1.5, 0.7)),  # Increased dropout
+            nn.Dropout(p=dropout_rate * 0.8),  # Reduced from 1.5x multiplier
             nn.Linear(num_features, 512),  # Reduced from 1024
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=min(dropout_rate * 1.2, 0.6)),
+            nn.Dropout(p=dropout_rate * 0.6),  # Reduced from 1.2x multiplier
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout_rate),
+            nn.Dropout(p=dropout_rate * 0.4),  # Reduced final layer dropout
             nn.Linear(256, num_classes)
         )
         
@@ -91,10 +91,14 @@ class BirdClassifier(nn.Module):
         self._initialize_weights()
     
     def _initialize_weights(self):
-        """Initialize classifier weights."""
+        """Initialize classifier weights with better initialization."""
         for m in self.classifier.modules():
             if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight)
+                nn.init.xavier_uniform_(m.weight, gain=nn.init.calculate_gain('relu'))
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
     
     def forward(self, x):

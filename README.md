@@ -1,22 +1,40 @@
-# Bird Classification Model
+# 🐦 Advanced Bird Species Classifier
 
-A comprehensive multi-class image classification system for bird species recognition with advanced overfitting prevention techniques.
+A state-of-the-art deep learning model for classifying 200 bird species with **76.74% accuracy**, built using advanced training techniques and deployed on Hugging Face Spaces.
 
-## Features
+## 🎯 Model Performance
 
-- **Multi-class bird classification** with support for any number of species
-- **Multiple model architectures**: ResNet50, ResNet18, EfficientNet-B0, and custom lightweight CNN
-- **Comprehensive evaluation metrics**: Top-1 accuracy, Average accuracy per class, Top-k accuracy, Precision, Recall, F1-score
-- **Advanced overfitting prevention**:
-  - Dropout regularization
-  - L2 weight decay
-  - Early stopping with patience
-  - Data augmentation
-  - Learning rate scheduling
-  - Gradient clipping
-  - Batch normalization
-- **Class imbalance handling** with automatic class weight calculation
-- **Comprehensive visualization** of results and training progress
+- **Test Accuracy**: 76.74% (Stage 2 Results)
+- **Architecture**: EfficientNet-B2 with enhanced regularization
+- **Training Strategy**: Progressive multi-stage training with MixUp augmentation
+- **Dataset**: CUB-200-2011 (200 North American bird species)
+
+## 🚀 Quick Start
+
+### Online Demo
+Try the live demo on Hugging Face Spaces: [Bird Classifier Demo](https://huggingface.co/spaces/your-username/bird-classifier)
+
+### Local Usage
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/bird-classifier.git
+cd bird-classifier
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the Gradio app
+python app.py
+```
+
+## 📊 Technical Details
+
+### Model Architecture
+- **Backbone**: EfficientNet-B2 (pre-trained on ImageNet)
+- **Input Size**: 320×320 pixels
+- **Classifier Head**: Progressive dimension reduction (512→256→200)
+- **Regularization**: Optimized dropout rates (0.18→0.15→0.09)
 
 ## Requirements
 

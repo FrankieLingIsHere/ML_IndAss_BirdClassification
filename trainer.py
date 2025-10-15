@@ -148,7 +148,7 @@ class ModelTrainer:
     
     def train(self, num_epochs: int = 100, learning_rate: float = 0.001,
               weight_decay: float = 1e-4, scheduler_type: str = 'cosine',
-              early_stopping_patience: int = 15, class_weights: Optional[torch.Tensor] = None,
+              early_stopping_patience: int = 3, class_weights: Optional[torch.Tensor] = None,
               gradient_clip_value: float = None, save_dir: str = "./checkpoints") -> Dict:
         """
         Train the model with comprehensive overfitting prevention.

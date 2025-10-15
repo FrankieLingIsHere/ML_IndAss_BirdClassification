@@ -1,6 +1,5 @@
 """
-Progressive training with MixUp and TTA for 90% accuracy target.
-Enhanced version building on 75.50% baseline.
+Progressive training with MixUp and TTA. This script is a staged pipeline; it does not stop based on a hard accuracy threshold.
 """
 import torch
 import torch.nn as nn
@@ -86,7 +85,7 @@ def train_with_mixup_progressive():
         learning_rate=stage1_args['learning_rate'],
         weight_decay=stage1_args['weight_decay'],
         scheduler_type='cosine',
-        early_stopping_patience=15,
+        early_stopping_patience=3,
         save_dir=stage1_args['save_dir']
     )
     
@@ -348,11 +347,10 @@ def stage3_progressive_training(base_model_path, class_names, num_classes):
             
             print(f"\n🏆 FINAL RESULT: {final_tta_metrics['top1_accuracy']:.4f} ({final_tta_metrics['top1_accuracy']*100:.2f}%)")
             
-            if final_tta_metrics['top1_accuracy'] >= 0.90:
-                print("🎉 SUCCESS! 90% TARGET ACHIEVED!")
-            else:
-                print(f"📈 Progress: {final_tta_metrics['top1_accuracy']*100:.2f}% (Target: 90%)")
+            # Print final TTA results; do not enforce stopping by threshold here.
+            print(f"📈 Progress: {final_tta_metrics['top1_accuracy']*100:.2f}%")
 
 
 if __name__ == '__main__':
-    train_with_mixup_progressive()
+    print("This script is deprecated. Please use `train_enhanced_90.py` (EfficientNet-B4 default) as the primary training entrypoint.")
+    print("If you want progressive MixUp training, convert this pipeline into a config and call it from train_enhanced_90.py or adapt the MixUp stage accordingly.")

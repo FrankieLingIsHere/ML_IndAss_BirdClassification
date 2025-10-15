@@ -253,7 +253,5 @@ def train_stage2_enhanced():
 
 
 if __name__ == "__main__":
-    model, test_acc, val_acc = train_stage2_enhanced()
-    print(f"\n🎯 STAGE 2 RESULTS SUMMARY:")
-    print(f"Test Accuracy: {test_acc:.2f}%")
-    print(f"Validation Accuracy: {val_acc:.2f}%")
+    print("This script is deprecated. Please use `train_enhanced_90.py` (now configured to EfficientNet-B4) as the primary training entrypoint.")
+    print("To run the recommended full training, run: python train_enhanced_90.py")

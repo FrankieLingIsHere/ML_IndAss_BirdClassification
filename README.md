@@ -83,8 +83,10 @@ The system automatically detects whether your labels are numeric indices or stri
 
 ### Basic Training
 
+Use the primary training entrypoint `train_enhanced_90.py` (configured for strong Colab/GPU runs).
+
 ```bash
-python train.py --train_dir data/Train --train_txt data/train.txt --test_dir data/Test --test_txt data/test.txt
+python train_enhanced_90.py
 ```
 
 ### Advanced Training with Custom Parameters

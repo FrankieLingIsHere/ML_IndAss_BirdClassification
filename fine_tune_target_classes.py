@@ -41,8 +41,8 @@ MAX_BOOST = 8.0            # cap per-class boost to avoid extreme weights
 LR_HEAD = 5e-5
 LR_BACKBONE = 1e-5
 WEIGHT_DECAY = 1e-4
-OUT_CKPT = 'results_stage2_accelerated/best_model_finetuned.pth'
-HISTORY_PATH = 'fine_tune_history.json'
+OUT_CKPT = 'results/fine_tune/best_model_finetuned.pth'
+HISTORY_PATH = 'results/fine_tune/fine_tune_history.json'
 PATIENCE = 3               # early stopping patience (on avg per-class acc)
 USE_FOCAL = False          # option to use focal loss
 GRAD_ACCUM = 1             # gradient accumulation steps to simulate larger batch size
@@ -213,7 +213,7 @@ if __name__ == '__main__':
     parser.add_argument('--boost', type=float, default=BOOST_FACTOR)
     parser.add_argument('--focal', action='store_true', help='Use focal loss')
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint to resume from')
-    parser.add_argument('--out-dir', type=str, default='results_stage2_accelerated', help='Directory to save checkpoints')
+    parser.add_argument('--out-dir', type=str, default='./results/fine_tune', help='Directory to save checkpoints')
     parser.add_argument('--grad-accum', type=int, default=GRAD_ACCUM, help='Gradient accumulation steps')
     parser.add_argument('--no-early-stop', action='store_true', help='Disable early stopping based on avg per-class accuracy')
     parser.add_argument('--allow-test-selection', action='store_true', help='(Unsafe) enable model selection using Test metrics (will evaluate test each epoch and save test-best checkpoints)')
@@ -239,11 +239,22 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Device:', device)
 
-    assert os.path.exists(BEST_MODEL_PATH), 'Best model not found: {}'.format(BEST_MODEL_PATH)
-    assert os.path.exists(EVAL_RESULTS_PATH), 'Evaluation file not found: {}'.format(EVAL_RESULTS_PATH)
+    # If user provided a resume checkpoint, use it; otherwise require the default BEST_MODEL_PATH
+    if RESUME_CKPT:
+        BEST_MODEL_PATH = RESUME_CKPT
+    else:
+        if not os.path.exists(BEST_MODEL_PATH):
+            raise AssertionError('Best model not found: {}'.format(BEST_MODEL_PATH))
 
-    eval_results = load_eval_results(EVAL_RESULTS_PATH)
-    targets, avg_acc, per_class_acc = identify_underperformers(eval_results)
+    # Load evaluation results if present; otherwise fall back to no targeted boosting
+    if os.path.exists(EVAL_RESULTS_PATH):
+        eval_results = load_eval_results(EVAL_RESULTS_PATH)
+        targets, avg_acc, per_class_acc = identify_underperformers(eval_results)
+    else:
+        print('Warning: evaluation results not found at {}. Proceeding without underperformer targeting.'.format(EVAL_RESULTS_PATH))
+        targets = []
+        avg_acc = 0.0
+        per_class_acc = {}
     print('Identified {} under-performing classes (avg={:.2f}%)'.format(len(targets), avg_acc))
 
     # Build data loaders using your helper to keep transforms identical
@@ -268,7 +279,8 @@ if __name__ == '__main__':
     train_loader = DataLoader(full_train_dataset, batch_size=BATCH_SIZE, sampler=sampler, num_workers=NUM_WORKERS)
 
     # Load model and checkpoint
-    model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b3', pretrained=False, dropout_rate=0.3)
+    # Use EfficientNet-B4 by default for stronger representational power on Colab/GPU.
+    model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b4', pretrained=False, dropout_rate=0.3)
     ckpt = torch.load(BEST_MODEL_PATH, map_location=device)
     # Handle two checkpoint formats
     if isinstance(ckpt, dict) and 'state_dict' in ckpt:

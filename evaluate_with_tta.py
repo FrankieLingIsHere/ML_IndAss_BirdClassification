@@ -68,6 +68,8 @@ def evaluate_tta(model, tta_transforms=TRANSFORMS):
     per_class_total = [0] * 200
     per_class_correct = [0] * 200
 
+    import os
+
     from PIL import Image
     with torch.no_grad():
         for path, label in samples:
@@ -99,9 +101,16 @@ def evaluate_tta(model, tta_transforms=TRANSFORMS):
 
 
 if __name__ == '__main__':
-    model = load_model(MODEL_PATH)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str, required=True, help='Model checkpoint to evaluate')
+    parser.add_argument('--out-dir', type=str, default='./results/eval_tta', help='Directory to save TTA results')
+    args = parser.parse_args()
+
+    os.makedirs(args.out_dir, exist_ok=True)
+    model = load_model(args.model)
     top1, avg_class, class_accs = evaluate_tta(model)
     print('TTA Top-1: {:.2f}%  Avg per-class: {:.2f}%'.format(top1, avg_class))
-    with open('tta_results.json','w') as f:
-        json.dump({'tta_top1': float(top1), 'tta_avg_class': float(avg_class), 'class_accs': class_accs}, f, indent=2)
-    print('Saved to tta_results.json')
+    out_path = os.path.join(args.out_dir, 'tta_results.json')
+    with open(out_path, 'w') as f:
+        json.dump({'top1': float(top1), 'avg_class': float(avg_class), 'class_accs': class_accs, 'model': args.model}, f, indent=2)
+    print('Saved to', out_path)

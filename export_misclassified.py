@@ -91,6 +91,7 @@ if __name__ == '__main__':
     parser.add_argument('--models', nargs='+', default=DEFAULT_MODELS, help='Model checkpoints to ensemble')
     parser.add_argument('--no-tta', action='store_true', help='Disable TTA')
     parser.add_argument('--copy', type=int, default=0, help='Copy up to N misclassified examples per class into misclassified/<class_id>/')
+    parser.add_argument('--out-dir', type=str, default=os.path.join('results', 'misclassified'), help='Directory to write misclassified.csv and copied images')
     args = parser.parse_args()
 
     models = []
@@ -106,7 +107,7 @@ if __name__ == '__main__':
     dataset = BirdDataset(TEST_DIR, TEST_TXT, transform=None)
     samples = dataset.samples
 
-    out_csv = 'misclassified.csv'
+    out_csv = os.path.join(args.out_dir, 'misclassified.csv')
     rows = []
     per_class_mis = defaultdict(list)
 
@@ -127,6 +128,7 @@ if __name__ == '__main__':
                 print('Processed', total)
 
     # write CSV
+    os.makedirs(args.out_dir, exist_ok=True)
     with open(out_csv, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['path', 'label', 'pred'])
@@ -148,14 +150,12 @@ if __name__ == '__main__':
 
     # copy examples
     if args.copy and args.copy > 0:
-        out_dir = 'misclassified'
-        os.makedirs(out_dir, exist_ok=True)
         for cid, paths in per_class_mis.items():
             if not paths:
                 continue
-            dest = os.path.join(out_dir, str(cid))
+            dest = os.path.join(args.out_dir, str(cid))
             os.makedirs(dest, exist_ok=True)
             for i, p in enumerate(paths[:args.copy]):
                 # copy to dest
                 shutil.copy(p, os.path.join(dest, os.path.basename(p)))
-        print('Copied up to', args.copy, 'examples per class into', out_dir)
+        print('Copied up to', args.copy, 'examples per class into', args.out_dir)

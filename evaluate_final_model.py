@@ -291,6 +291,7 @@ def main():
     # CLI: allow specifying a model path; otherwise auto-select
     parser = argparse.ArgumentParser(description='Evaluate a saved checkpoint')
     parser.add_argument('--model', type=str, default=None, help='Path to model checkpoint (.pth). If omitted, prefers best_model_finetuned.pth then best_model.pth in results_stage2_accelerated')
+    parser.add_argument('--out-dir', type=str, default=os.path.join('results', 'eval_single'), help='Directory to write final_evaluation_results.json')
     args = parser.parse_args()
 
     def find_default_checkpoint():
@@ -336,7 +337,9 @@ def main():
         print_results(results, class_names)
 
         # Save results
-        save_results(results, 'final_evaluation_results.json')
+        os.makedirs(args.out_dir, exist_ok=True)
+        out_path = os.path.join(args.out_dir, 'final_evaluation_results.json')
+        save_results(results, out_path)
 
         print("\nEVALUATION COMPLETED SUCCESSFULLY!")
         print("Use these metrics in your report:")

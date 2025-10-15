@@ -1,5 +1,5 @@
 """
-Simple enhanced training script for 90% accuracy with key improvements.
+Simple enhanced training script with key improvements. This script no longer stops at a hard 90% threshold.
 """
 import argparse
 import os
@@ -14,24 +14,27 @@ from metrics import evaluate_model
 
 def main():
     """Main enhanced training function."""
-    print("🚀 Enhanced Bird Classification Training for 90% Accuracy")
+        print("🚀 Enhanced Bird Classification Training")
     print("="*70)
+    print("\n\n🎉 ENHANCED TRAINING COMPLETE!")
     
-    # Use enhanced defaults for better performance
+    # Use enhanced defaults for better performance on Colab/GPU
+    # Primary/Recommended training entrypoint for full runs.
+    # Default architecture switched to EfficientNet-B4 with larger input for stronger performance.
     args = {
         'train_dir': 'data/Train',
         'train_txt': 'data/train.txt',
         'test_dir': 'data/Test',
         'test_txt': 'data/test.txt',
-        'model_type': 'efficientnet_b2',  # Better balance than B3
-        'image_size': 288,  # Larger images for more detail
-        'batch_size': 16,   # Reduced for stability
-        'dropout_rate': 0.4,  # Reduced from 0.5 for better learning
-        'learning_rate': 1e-4,  # Increased from 5e-5
-        'weight_decay': 1e-4,   # Reduced for initial learning
-        'num_epochs': 75,       # More epochs
+        'model_type': 'efficientnet_b4',  # Recommended backbone for Colab runs
+        'image_size': 448,  # Larger input for fine-grained detail
+        'batch_size': 8,   # Conservative default for 448px + B4 (adjust to your GPU)
+        'dropout_rate': 0.4,
+        'learning_rate': 5e-5,
+        'weight_decay': 1e-4,
+        'num_epochs': 75,
         'augmentation_level': 'advanced',
-        'save_dir': './enhanced_results_90',
+        'save_dir': './results/train_enhanced_b4',
         'device': 'cuda' if torch.cuda.is_available() else 'cpu'
     }
     
@@ -103,7 +106,7 @@ def main():
             learning_rate=5e-4,  # Moderate LR for classifier warmup
             weight_decay=args['weight_decay'],
             scheduler_type='cosine',
-            early_stopping_patience=8,
+            early_stopping_patience=3,
             save_dir=os.path.join(args['save_dir'], 'phase1_checkpoints')
         )
         
@@ -120,7 +123,7 @@ def main():
             learning_rate=args['learning_rate'],  # Lower LR for fine-tuning
             weight_decay=args['weight_decay'],
             scheduler_type='cosine',
-            early_stopping_patience=12,
+            early_stopping_patience=3,
             save_dir=os.path.join(args['save_dir'], 'phase2_checkpoints')
         )
         
@@ -174,35 +177,34 @@ def main():
             print(f"  Top-3 Accuracy: {test_metrics['top3_accuracy']:.4f} ({top3_pct:.2f}%)")
         
         print("\n🚀 Performance Analysis:")
-        if test_metrics['top1_accuracy'] >= 0.90:
-            print("  🎯 EXCELLENT! Target 90% accuracy achieved!")
-        elif test_metrics['top1_accuracy'] >= 0.85:
-            print("  ✅ GREAT! Very close to 90% target.")
+        # Neutral performance categories (no hard target enforced)
+        if test_metrics['top1_accuracy'] >= 0.85:
+            print("  ✅ STRONG PERFORMANCE: further tuning/ensemble may yield additional gains.")
         elif test_metrics['top1_accuracy'] >= 0.80:
-            print("  🔥 GOOD! Solid improvement achieved.")
+            print("  🔥 GOOD: solid results; consider ensembling or stronger augmentations.")
         elif test_metrics['top1_accuracy'] >= 0.75:
-            print("  ⭐ PROGRESS! Moving in the right direction.")
+            print("  ⭐ PROGRESS: reasonable baseline; try focal/oversampling for underperforming classes.")
         else:
-            print("  📈 Room for improvement. Consider ensemble methods.")
+            print("  📈 Room for improvement. Consider data cleaning, augmentation, or a larger backbone.")
         
         improvement = test_metrics['top1_accuracy'] - 0.5457  # From baseline
         print(f"  📈 Improvement: +{improvement:.4f} ({improvement*100:.2f}%) from baseline")
         
         print("\n💡 Key Enhancements Applied:")
-        print("  ✅ EfficientNet-B2 architecture")
+    print("  ✅ EfficientNet-B4 architecture")
         print("  ✅ Enhanced dropout (0.5)")
         print("  ✅ Advanced data augmentation")
         print("  ✅ Multi-phase training strategy")
         print("  ✅ Optimized hyperparameters")
         print("  ✅ Fixed validation transform bug")
         
-        if test_metrics['top1_accuracy'] < 0.90:
-            print("\n🔧 Additional Techniques for 90%+:")
-            print("  • Test Time Augmentation (TTA)")
-            print("  • Model ensembling")
-            print("  • Knowledge distillation")
-            print("  • Progressive resizing")
-            print("  • Mixup/CutMix augmentation")
+        # Helpful next-step techniques to improve performance (no hard target enforced)
+        print("\n🔧 Useful next steps to try:")
+        print("  • Test Time Augmentation (TTA)")
+        print("  • Model ensembling and weighted averaging")
+        print("  • Knowledge distillation")
+        print("  • Progressive resizing")
+        print("  • Mixup/CutMix augmentation")
         
     except Exception as e:
         print(f"Error during training: {e}")

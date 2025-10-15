@@ -7,6 +7,7 @@ import os
 import numpy as np
 from models import BirdClassifier
 from data_loader import BirdDataset
+import argparse
 
 MODEL_PATH = 'results_stage2_accelerated/best_model_finetuned.pth'
 TEST_DIR = 'data/Test'

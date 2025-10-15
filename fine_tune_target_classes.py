@@ -142,23 +142,33 @@ def build_sampler(dataset, num_classes, targets, boost=BOOST_FACTOR, max_boost=M
 
 # --- Training/Eval loops ---
 
-def train_one_epoch(model, loader, criterion, optimizer, device):
+def train_one_epoch(model, loader, criterion, optimizer, device, grad_accum=1):
     model.train()
     running_loss = 0.0
     correct = 0
     total = 0
-    for imgs, labels in loader:
+    optimizer.zero_grad()
+    for step, (imgs, labels) in enumerate(loader):
         imgs = imgs.to(device); labels = labels.to(device)
-        optimizer.zero_grad()
         outputs = model(imgs)
         loss = criterion(outputs, labels)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+        # scale loss for gradient accumulation
+        (loss / float(grad_accum)).backward()
+        # step and zero every grad_accum steps
+        if (step + 1) % grad_accum == 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            optimizer.step()
+            optimizer.zero_grad()
+
         running_loss += loss.item() * imgs.size(0)
         preds = outputs.argmax(dim=1)
         correct += (preds == labels).sum().item()
         total += labels.size(0)
+    # if there are leftover gradients (when len(loader) % grad_accum != 0)
+    if (step + 1) % grad_accum != 0:
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+        optimizer.zero_grad()
     return running_loss / total, correct / total * 100.0
 
 
@@ -209,6 +219,12 @@ class FocalLoss(nn.Module):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=EPOCHS)
+    parser.add_argument('--batch-size', type=int, default=BATCH_SIZE)
+    parser.add_argument('--image-size', type=int, default=384)
+    parser.add_argument('--num-workers', type=int, default=NUM_WORKERS)
+    parser.add_argument('--unfreeze-at', type=int, default=UNFREEZE_AT, help='Epoch to start gradual unfreeze')
+    parser.add_argument('--patience', type=int, default=PATIENCE, help='Early stopping patience (epochs)')
+    parser.add_argument('--best-model-path', type=str, default=BEST_MODEL_PATH, help='Path to base checkpoint to resume from')
     parser.add_argument('--head-lr', type=float, default=LR_HEAD)
     parser.add_argument('--backbone-lr', type=float, default=LR_BACKBONE)
     parser.add_argument('--boost', type=float, default=BOOST_FACTOR)
@@ -236,9 +252,21 @@ if __name__ == '__main__':
     FINAL_MODE = args.final_mode
     FINAL_K = args.final_k
     FINAL_NAME = args.save_final_name
+    BATCH_SIZE = args.batch_size
+    IMAGE_SIZE = args.image_size
+    NUM_WORKERS = args.num_workers
+    UNFREEZE_AT = args.unfreeze_at
+    PATIENCE = args.patience
+    BEST_MODEL_PATH = args.best_model_path
+
+    # Ensure output directory exists and update derived paths
+    os.makedirs(OUT_DIR, exist_ok=True)
+    OUT_CKPT = os.path.join(OUT_DIR, 'best_model_finetuned.pth')
+    HISTORY_PATH = os.path.join(OUT_DIR, 'fine_tune_history.json')
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Device:', device)
+    print(f'Gradual unfreeze at epoch {UNFREEZE_AT}; early stopping patience {PATIENCE}')
 
     # If user provided a resume checkpoint, use it; otherwise require the default BEST_MODEL_PATH
     if RESUME_CKPT:
@@ -261,7 +289,7 @@ if __name__ == '__main__':
     # Build data loaders using your helper to keep transforms identical
     train_loader, val_loader, test_loader, num_classes, class_names = create_data_loaders(
         TRAIN_DIR, TRAIN_TXT, TEST_DIR, TEST_TXT,
-        batch_size=BATCH_SIZE, image_size=384, num_workers=NUM_WORKERS, validation_split=0.1, augmentation_level='advanced'
+        batch_size=BATCH_SIZE, image_size=IMAGE_SIZE, num_workers=NUM_WORKERS, validation_split=0.1, augmentation_level='advanced'
     )
 
     # Build sampler on the underlying full train dataset object in data_loader
@@ -272,24 +300,41 @@ if __name__ == '__main__':
         full_train_dataset = train_loader.dataset
     else:
         from data_loader import BirdDataset, get_data_transforms
-        train_transform = get_data_transforms(image_size=384, is_training=True, augmentation_level='advanced')
+        train_transform = get_data_transforms(image_size=IMAGE_SIZE, is_training=True, augmentation_level='advanced')
         full_train_dataset = BirdDataset(TRAIN_DIR, TRAIN_TXT, transform=train_transform)
     sampler = build_sampler(full_train_dataset, num_classes, targets, boost=BOOST_FACTOR)
 
     # Replace train_loader with sampler-based loader to oversample targets
     train_loader = DataLoader(full_train_dataset, batch_size=BATCH_SIZE, sampler=sampler, num_workers=NUM_WORKERS)
+    # Adjust val/test batch sizes for evaluation speed
+    # If the original val/test loaders exist, prefer their dataset and transforms
+    if hasattr(val_loader, 'dataset'):
+        val_dataset = val_loader.dataset
+        val_loader = DataLoader(val_dataset, batch_size=EVAL_BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
+    if hasattr(test_loader, 'dataset'):
+        test_dataset = test_loader.dataset
+        test_loader = DataLoader(test_dataset, batch_size=EVAL_BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
     # Load model and checkpoint
     # Use EfficientNet-B4 by default for stronger representational power on Colab/GPU.
     model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b4', pretrained=False, dropout_rate=0.3)
     ckpt = torch.load(BEST_MODEL_PATH, map_location=device)
-    # Handle two checkpoint formats
-    if isinstance(ckpt, dict) and 'state_dict' in ckpt:
-        state = ckpt['state_dict']
-    elif isinstance(ckpt, dict) and all(k.startswith('module.') for k in ckpt.keys()):
-        state = {k.replace('module.', ''): v for k, v in ckpt.items()}
+    # Robust checkpoint handling: support {'state_dict': ...}, {'model_state': ...}, or raw state_dict
+    if isinstance(ckpt, dict):
+        if 'state_dict' in ckpt:
+            state = ckpt['state_dict']
+        elif 'model_state' in ckpt:
+            state = ckpt['model_state']
+        else:
+            # maybe it's already a state_dict or wrapped with 'module.' prefixes
+            state = ckpt
     else:
         state = ckpt
+
+    # If keys are prefixed by 'module.', strip them
+    if isinstance(state, dict) and all(isinstance(k, str) and k.startswith('module.') for k in state.keys()):
+        state = {k.replace('module.', ''): v for k, v in state.items()}
+
     model.load_state_dict(state)
     model.to(device)
 
@@ -321,12 +366,17 @@ if __name__ == '__main__':
     else:
         criterion = nn.CrossEntropyLoss(weight=class_weights)
 
-    optimizer = torch.optim.AdamW(
-        [
-            {'params': [p for n, p in model.named_parameters() if 'backbone' in n and p.requires_grad], 'lr': LR_BACKBONE},
-            {'params': [p for n, p in model.named_parameters() if 'backbone' not in n and p.requires_grad], 'lr': LR_HEAD}
-        ], weight_decay=WEIGHT_DECAY
-    )
+    # Prepare parameter groups: if no backbone params are trainable yet, omit that group
+    backbone_params = [p for n, p in model.named_parameters() if 'backbone' in n and p.requires_grad]
+    head_params = [p for n, p in model.named_parameters() if 'backbone' not in n and p.requires_grad]
+    param_groups = []
+    if backbone_params:
+        param_groups.append({'params': backbone_params, 'lr': LR_BACKBONE})
+    if head_params:
+        param_groups.append({'params': head_params, 'lr': LR_HEAD})
+    optimizer = torch.optim.AdamW(param_groups, weight_decay=WEIGHT_DECAY)
+
+    print(f'Out dir: {OUT_DIR}, Resuming from: {BEST_MODEL_PATH}')
 
     scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
 

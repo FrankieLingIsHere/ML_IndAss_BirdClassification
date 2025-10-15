@@ -22,9 +22,9 @@ def train_with_mixup_progressive():
     
     # Enhanced arguments for Stage 1
     stage1_args = {
-        'model_type': 'efficientnet_b2',
-        'image_size': 320,  # Increased from 288
-        'batch_size': 16,   # Reduced for larger images
+        'model_type': 'efficientnet_b4',
+        'image_size': 384,  # Increased for B4
+        'batch_size': 12,   # Reduced for larger images/B4
         'learning_rate': 8e-5,  # Slightly reduced
         'weight_decay': 1e-4,
         'dropout_rate': 0.3,  # Reduced from 0.5

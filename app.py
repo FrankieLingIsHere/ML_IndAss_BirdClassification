@@ -48,7 +48,7 @@ if os.path.exists(MODEL_PATH):
         elif conv_head_shape[0] == 1280:  # EfficientNet-B0/B1
             model_type = 'efficientnet_b1'
         else:
-            model_type = 'efficientnet_b2'  # Default fallback
+            model_type = 'efficientnet_b4'  # Default fallback
     else:
         model_type = 'efficientnet_b2'  # Default fallback
     
@@ -61,7 +61,7 @@ if os.path.exists(MODEL_PATH):
     print("Detected model: {} with {} classes".format(model_type, actual_classes))
     
 else:
-    model_type = 'efficientnet_b2'
+    model_type = 'efficientnet_b4'
     actual_classes = NUM_CLASSES
     print("Model file not found, using default: {}".format(model_type))
 

@@ -29,6 +29,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 # Use your project's modules
 from models import BirdClassifier
 from data_loader import create_data_loaders
+from training_utils import freeze_batchnorm_stats, unfreeze_batchnorm_stats, gradual_unfreeze
 
 # --- Hyperparameters (tweak for CPU) ---
 BATCH_SIZE = 8             # small for CPU
@@ -299,6 +300,11 @@ if __name__ == '__main__':
         else:
             p.requires_grad = True
 
+    # Freeze BatchNorm running stats during head-warmup to avoid noisy estimates on small batches
+    backbone = getattr(model, 'backbone', None) or getattr(model, 'features', None)
+    if backbone is not None:
+        freeze_batchnorm_stats(backbone)
+
     # Loss and optimizer (class weights: dynamic based on deficit from avg)
     class_weights = torch.ones(num_classes, device=device)
     # compute per-class multipliers from per_class_acc where available
@@ -393,12 +399,18 @@ if __name__ == '__main__':
                 print(' -> New test-avgclass best saved ({:.2f}%) -> {}'.format(test_avg_class, tk2))
 
     # Gradual unfreeze: start unfreezing parts of backbone at UNFREEZE_AT, full at UNFREEZE_AT+1
+        # Gradual unfreeze: unfreeze last N backbone blocks at UNFREEZE_AT, then full unfreeze at UNFREEZE_AT+1
         if epoch == UNFREEZE_AT:
             print('Gradually unfreezing last stages of backbone...')
-            # Unfreeze parameters whose name contains 'layer4' or last blocks if ResNet-like
-            for name, p in model.named_parameters():
-                if 'backbone' in name and ('layer4' in name or 'block5' in name or 'conv_head' in name):
-                    p.requires_grad = True
+            # Try to unfreeze last 2 blocks for EfficientNet-like backbones
+            unfrozen = gradual_unfreeze(model, backbone_attr='backbone', block_name_pattern=r'_blocks\\.\\d+', unfreeze_last_n_blocks=2)
+            if unfrozen:
+                print('Unfrozen params:', len(unfrozen))
+            else:
+                # Fallback: try a name-based heuristic
+                for name, p in model.named_parameters():
+                    if 'backbone' in name and ('layer4' in name or 'block5' in name or 'conv_head' in name):
+                        p.requires_grad = True
         if epoch == UNFREEZE_AT + 1:
             print('Unfreezing full backbone for deeper fine-tuning...')
             for name, p in model.named_parameters():
@@ -408,6 +420,10 @@ if __name__ == '__main__':
                 {'params': [p for n, p in model.named_parameters() if 'backbone' in n and p.requires_grad], 'lr': LR_BACKBONE},
                 {'params': [p for n, p in model.named_parameters() if 'backbone' not in n and p.requires_grad], 'lr': LR_HEAD}
             ], weight_decay=WEIGHT_DECAY)
+            # Re-enable BatchNorm updates once backbone is mostly unfrozen
+            backbone = getattr(model, 'backbone', None) or getattr(model, 'features', None)
+            if backbone is not None:
+                unfreeze_batchnorm_stats(backbone)
 
         # Step scheduler based on avg per-class accuracy
         scheduler.step(avg_per_class)

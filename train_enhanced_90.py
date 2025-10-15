@@ -10,33 +10,43 @@ from data_loader import create_data_loaders
 from models import create_model
 from trainer import ModelTrainer
 from metrics import evaluate_model
+from training_utils import freeze_batchnorm_stats, unfreeze_batchnorm_stats, gradual_unfreeze
 
 
 def main():
     """Main enhanced training function."""
-        print("🚀 Enhanced Bird Classification Training")
+    # Parse CLI overrides so users can run in Colab without editing the file
+    parser = argparse.ArgumentParser(description='Enhanced training (multi-phase)')
+    parser.add_argument('--model-type', default='efficientnet_b4', help='Backbone architecture (efficientnet_b4, efficientnet_b3, resnet50, etc.)')
+    parser.add_argument('--image-size', type=int, default=448, help='Input image size')
+    parser.add_argument('--batch-size', type=int, default=8, help='Training batch size')
+    parser.add_argument('--save-dir', default='./results/train_enhanced_b4', help='Directory to save checkpoints and results')
+    parser.add_argument('--epochs', type=int, default=75, help='Total training epochs')
+    cli_args = parser.parse_args()
+
+    print("🚀 Enhanced Bird Classification Training")
     print("="*70)
-    print("\n\n🎉 ENHANCED TRAINING COMPLETE!")
-    
+
     # Use enhanced defaults for better performance on Colab/GPU
-    # Primary/Recommended training entrypoint for full runs.
-    # Default architecture switched to EfficientNet-B4 with larger input for stronger performance.
     args = {
         'train_dir': 'data/Train',
         'train_txt': 'data/train.txt',
         'test_dir': 'data/Test',
         'test_txt': 'data/test.txt',
-        'model_type': 'efficientnet_b4',  # Recommended backbone for Colab runs
-        'image_size': 448,  # Larger input for fine-grained detail
-        'batch_size': 8,   # Conservative default for 448px + B4 (adjust to your GPU)
+        'model_type': cli_args.model_type,
+        'image_size': cli_args.image_size,
+        'batch_size': cli_args.batch_size,
         'dropout_rate': 0.4,
         'learning_rate': 5e-5,
         'weight_decay': 1e-4,
-        'num_epochs': 75,
+        'num_epochs': cli_args.epochs,
         'augmentation_level': 'advanced',
-        'save_dir': './results/train_enhanced_b4',
+        'save_dir': cli_args.save_dir,
         'device': 'cuda' if torch.cuda.is_available() else 'cpu'
     }
+
+    print(f"Using device: {args['device']}")
+    print(f"Model type: {args['model_type']}  Image size: {args['image_size']}  Batch size: {args['batch_size']}")
     
     print(f"Using device: {args['device']}")
     os.makedirs(args['save_dir'], exist_ok=True)
@@ -92,13 +102,20 @@ def main():
         # Phase 1: Warm up classifier with frozen backbone
         print("\n--- Phase 1: Classifier Warm-up ---")
         
-        # Freeze backbone
-        if hasattr(model, 'backbone'):
-            for param in model.backbone.parameters():
+        # Freeze backbone (safe attribute checks)
+        backbone = getattr(model, 'backbone', None)
+        features = getattr(model, 'features', None)
+        if backbone is not None and hasattr(backbone, 'parameters'):
+            for param in backbone.parameters():
                 param.requires_grad = False
-        elif hasattr(model, 'features'):
-            for param in model.features.parameters():
+        elif features is not None and hasattr(features, 'parameters'):
+            for param in features.parameters():
                 param.requires_grad = False
+
+        # Freeze BatchNorm running stats during head warmup
+        bb = backbone or features
+        if bb is not None:
+            freeze_batchnorm_stats(bb)
         
         # Train classifier only
         history_phase1 = trainer.train(
@@ -113,9 +130,19 @@ def main():
         # Phase 2: End-to-end fine-tuning
         print("\n--- Phase 2: End-to-End Fine-tuning ---")
         
-        # Unfreeze backbone
-        for param in model.parameters():
-            param.requires_grad = True
+        # Gradual unfreeze: unfreeze last blocks first, then full unfreeze
+        print('Gradually unfreezing backbone blocks...')
+        unfrozen = gradual_unfreeze(model, backbone_attr='backbone', block_name_pattern=r'_blocks\\.\\d+', unfreeze_last_n_blocks=2)
+        if unfrozen:
+            print('Unfrozen params:', len(unfrozen))
+        else:
+            # fallback to unfreeze all if block detection fails
+            for param in model.parameters():
+                param.requires_grad = True
+            # Re-enable BatchNorm stats
+            bb = getattr(model, 'backbone', None) or getattr(model, 'features', None)
+            if bb is not None:
+                unfreeze_batchnorm_stats(bb)
         
         # Fine-tune entire model
         history_phase2 = trainer.train(
@@ -171,11 +198,11 @@ def main():
         avg_pct = test_metrics['average_accuracy_per_class'] * 100
         print(f"  Test Accuracy: {test_metrics['top1_accuracy']:.4f} ({acc_pct:.2f}%)")
         print(f"  Average per Class: {test_metrics['average_accuracy_per_class']:.4f} ({avg_pct:.2f}%)")
-        
+
         if 'top3_accuracy' in test_metrics:
             top3_pct = test_metrics['top3_accuracy'] * 100
             print(f"  Top-3 Accuracy: {test_metrics['top3_accuracy']:.4f} ({top3_pct:.2f}%)")
-        
+
         print("\n🚀 Performance Analysis:")
         # Neutral performance categories (no hard target enforced)
         if test_metrics['top1_accuracy'] >= 0.85:
@@ -186,18 +213,18 @@ def main():
             print("  ⭐ PROGRESS: reasonable baseline; try focal/oversampling for underperforming classes.")
         else:
             print("  📈 Room for improvement. Consider data cleaning, augmentation, or a larger backbone.")
-        
+
         improvement = test_metrics['top1_accuracy'] - 0.5457  # From baseline
         print(f"  📈 Improvement: +{improvement:.4f} ({improvement*100:.2f}%) from baseline")
-        
+
         print("\n💡 Key Enhancements Applied:")
-    print("  ✅ EfficientNet-B4 architecture")
+        print("  ✅ EfficientNet-B4 architecture")
         print("  ✅ Enhanced dropout (0.5)")
         print("  ✅ Advanced data augmentation")
         print("  ✅ Multi-phase training strategy")
         print("  ✅ Optimized hyperparameters")
         print("  ✅ Fixed validation transform bug")
-        
+
         # Helpful next-step techniques to improve performance (no hard target enforced)
         print("\n🔧 Useful next steps to try:")
         print("  • Test Time Augmentation (TTA)")

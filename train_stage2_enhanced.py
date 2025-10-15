@@ -29,8 +29,8 @@ def train_stage2_enhanced():
     
     # Stage 2 Configuration (Colab optimized)
     config = {
-        'model_type': 'efficientnet_b2',
-        'image_size': 320,      # Stage 2 image size
+        'model_type': 'efficientnet_b4',
+        'image_size': 384,      # Stage 2 image size (b4 benefits from slightly larger input)
         'batch_size': 12,       # Optimized batch size
         'learning_rate': 6e-5,  # Stage 2 learning rate
         'weight_decay': 1e-4,

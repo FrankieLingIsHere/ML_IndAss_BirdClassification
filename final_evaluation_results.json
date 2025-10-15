@@ -1,13 +1,13 @@
 {
-  "top1_accuracy": 79.734219269103,
-  "average_accuracy_per_class": 79.4327380952381,
+  "top1_accuracy": 79.65116279069767,
+  "average_accuracy_per_class": 79.66607142857143,
   "total_samples": 1204,
-  "total_correct": 960,
+  "total_correct": 959,
   "num_classes_tested": 200,
   "per_class_details": {
     "0": {
-      "accuracy": 85.71428571428571,
-      "correct": 6,
+      "accuracy": 100.0,
+      "correct": 7,
       "total": 7
     },
     "1": {
@@ -56,8 +56,8 @@
       "total": 5
     },
     "10": {
-      "accuracy": 40.0,
-      "correct": 2,
+      "accuracy": 100.0,
+      "correct": 5,
       "total": 5
     },
     "11": {
@@ -76,8 +76,8 @@
       "total": 7
     },
     "14": {
-      "accuracy": 50.0,
-      "correct": 3,
+      "accuracy": 66.66666666666666,
+      "correct": 4,
       "total": 6
     },
     "15": {
@@ -96,8 +96,8 @@
       "total": 4
     },
     "18": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "19": {
@@ -116,28 +116,28 @@
       "total": 4
     },
     "22": {
-      "accuracy": 40.0,
-      "correct": 2,
+      "accuracy": 60.0,
+      "correct": 3,
       "total": 5
     },
     "23": {
-      "accuracy": 50.0,
-      "correct": 2,
+      "accuracy": 75.0,
+      "correct": 3,
       "total": 4
     },
     "24": {
-      "accuracy": 100.0,
-      "correct": 6,
+      "accuracy": 66.66666666666666,
+      "correct": 4,
       "total": 6
     },
     "25": {
-      "accuracy": 80.0,
-      "correct": 4,
+      "accuracy": 60.0,
+      "correct": 3,
       "total": 5
     },
     "26": {
-      "accuracy": 100.0,
-      "correct": 6,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "27": {
@@ -146,13 +146,13 @@
       "total": 7
     },
     "28": {
-      "accuracy": 60.0,
-      "correct": 3,
+      "accuracy": 80.0,
+      "correct": 4,
       "total": 5
     },
     "29": {
-      "accuracy": 83.33333333333334,
-      "correct": 5,
+      "accuracy": 66.66666666666666,
+      "correct": 4,
       "total": 6
     },
     "30": {
@@ -161,13 +161,13 @@
       "total": 7
     },
     "31": {
-      "accuracy": 100.0,
-      "correct": 6,
+      "accuracy": 66.66666666666666,
+      "correct": 4,
       "total": 6
     },
     "32": {
-      "accuracy": 57.14285714285714,
-      "correct": 4,
+      "accuracy": 71.42857142857143,
+      "correct": 5,
       "total": 7
     },
     "33": {
@@ -186,28 +186,28 @@
       "total": 8
     },
     "36": {
-      "accuracy": 42.857142857142854,
-      "correct": 3,
+      "accuracy": 28.57142857142857,
+      "correct": 2,
       "total": 7
     },
     "37": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "38": {
-      "accuracy": 50.0,
-      "correct": 3,
-      "total": 6
-    },
-    "39": {
       "accuracy": 66.66666666666666,
       "correct": 4,
       "total": 6
     },
+    "39": {
+      "accuracy": 100.0,
+      "correct": 6,
+      "total": 6
+    },
     "40": {
-      "accuracy": 71.42857142857143,
-      "correct": 5,
+      "accuracy": 100.0,
+      "correct": 7,
       "total": 7
     },
     "41": {
@@ -221,8 +221,8 @@
       "total": 7
     },
     "43": {
-      "accuracy": 75.0,
-      "correct": 3,
+      "accuracy": 100.0,
+      "correct": 4,
       "total": 4
     },
     "44": {
@@ -241,8 +241,8 @@
       "total": 5
     },
     "47": {
-      "accuracy": 71.42857142857143,
-      "correct": 5,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "48": {
@@ -286,8 +286,8 @@
       "total": 4
     },
     "56": {
-      "accuracy": 75.0,
-      "correct": 3,
+      "accuracy": 100.0,
+      "correct": 4,
       "total": 4
     },
     "57": {
@@ -296,13 +296,13 @@
       "total": 5
     },
     "58": {
-      "accuracy": 80.0,
-      "correct": 4,
+      "accuracy": 20.0,
+      "correct": 1,
       "total": 5
     },
     "59": {
-      "accuracy": 57.14285714285714,
-      "correct": 4,
+      "accuracy": 71.42857142857143,
+      "correct": 5,
       "total": 7
     },
     "60": {
@@ -321,13 +321,13 @@
       "total": 4
     },
     "63": {
-      "accuracy": 60.0,
-      "correct": 3,
+      "accuracy": 40.0,
+      "correct": 2,
       "total": 5
     },
     "64": {
-      "accuracy": 66.66666666666666,
-      "correct": 4,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "65": {
@@ -386,8 +386,8 @@
       "total": 5
     },
     "76": {
-      "accuracy": 71.42857142857143,
-      "correct": 5,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "77": {
@@ -401,8 +401,8 @@
       "total": 6
     },
     "79": {
-      "accuracy": 100.0,
-      "correct": 5,
+      "accuracy": 80.0,
+      "correct": 4,
       "total": 5
     },
     "80": {
@@ -441,8 +441,8 @@
       "total": 5
     },
     "87": {
-      "accuracy": 66.66666666666666,
-      "correct": 4,
+      "accuracy": 50.0,
+      "correct": 3,
       "total": 6
     },
     "88": {
@@ -456,8 +456,8 @@
       "total": 6
     },
     "90": {
-      "accuracy": 50.0,
-      "correct": 3,
+      "accuracy": 66.66666666666666,
+      "correct": 4,
       "total": 6
     },
     "91": {
@@ -476,8 +476,8 @@
       "total": 7
     },
     "94": {
-      "accuracy": 80.0,
-      "correct": 4,
+      "accuracy": 60.0,
+      "correct": 3,
       "total": 5
     },
     "95": {
@@ -496,8 +496,8 @@
       "total": 6
     },
     "98": {
-      "accuracy": 100.0,
-      "correct": 6,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "99": {
@@ -511,8 +511,8 @@
       "total": 5
     },
     "101": {
-      "accuracy": 42.857142857142854,
-      "correct": 3,
+      "accuracy": 28.57142857142857,
+      "correct": 2,
       "total": 7
     },
     "102": {
@@ -521,8 +521,8 @@
       "total": 5
     },
     "103": {
-      "accuracy": 83.33333333333334,
-      "correct": 5,
+      "accuracy": 50.0,
+      "correct": 3,
       "total": 6
     },
     "104": {
@@ -536,13 +536,13 @@
       "total": 6
     },
     "106": {
-      "accuracy": 60.0,
-      "correct": 3,
+      "accuracy": 20.0,
+      "correct": 1,
       "total": 5
     },
     "107": {
-      "accuracy": 100.0,
-      "correct": 6,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "108": {
@@ -576,28 +576,28 @@
       "total": 7
     },
     "114": {
-      "accuracy": 85.71428571428571,
-      "correct": 6,
+      "accuracy": 71.42857142857143,
+      "correct": 5,
       "total": 7
     },
     "115": {
+      "accuracy": 66.66666666666666,
+      "correct": 4,
+      "total": 6
+    },
+    "116": {
+      "accuracy": 71.42857142857143,
+      "correct": 5,
+      "total": 7
+    },
+    "117": {
       "accuracy": 50.0,
       "correct": 3,
       "total": 6
     },
-    "116": {
-      "accuracy": 28.57142857142857,
-      "correct": 2,
-      "total": 7
-    },
-    "117": {
-      "accuracy": 100.0,
-      "correct": 6,
-      "total": 6
-    },
     "118": {
-      "accuracy": 33.33333333333333,
-      "correct": 2,
+      "accuracy": 66.66666666666666,
+      "correct": 4,
       "total": 6
     },
     "119": {
@@ -606,8 +606,8 @@
       "total": 7
     },
     "120": {
-      "accuracy": 57.14285714285714,
-      "correct": 4,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "121": {
@@ -616,23 +616,23 @@
       "total": 5
     },
     "122": {
-      "accuracy": 57.14285714285714,
-      "correct": 4,
-      "total": 7
-    },
-    "123": {
-      "accuracy": 85.71428571428571,
-      "correct": 6,
-      "total": 7
-    },
-    "124": {
       "accuracy": 71.42857142857143,
       "correct": 5,
       "total": 7
     },
+    "123": {
+      "accuracy": 71.42857142857143,
+      "correct": 5,
+      "total": 7
+    },
+    "124": {
+      "accuracy": 100.0,
+      "correct": 7,
+      "total": 7
+    },
     "125": {
-      "accuracy": 33.33333333333333,
-      "correct": 2,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "126": {
@@ -656,8 +656,8 @@
       "total": 4
     },
     "130": {
-      "accuracy": 100.0,
-      "correct": 8,
+      "accuracy": 75.0,
+      "correct": 6,
       "total": 8
     },
     "131": {
@@ -676,8 +676,8 @@
       "total": 7
     },
     "134": {
-      "accuracy": 20.0,
-      "correct": 1,
+      "accuracy": 60.0,
+      "correct": 3,
       "total": 5
     },
     "135": {
@@ -686,23 +686,23 @@
       "total": 5
     },
     "136": {
-      "accuracy": 100.0,
-      "correct": 6,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "137": {
-      "accuracy": 85.71428571428571,
-      "correct": 6,
+      "accuracy": 71.42857142857143,
+      "correct": 5,
       "total": 7
     },
     "138": {
-      "accuracy": 80.0,
-      "correct": 4,
+      "accuracy": 100.0,
+      "correct": 5,
       "total": 5
     },
     "139": {
-      "accuracy": 100.0,
-      "correct": 4,
+      "accuracy": 75.0,
+      "correct": 3,
       "total": 4
     },
     "140": {
@@ -711,18 +711,18 @@
       "total": 7
     },
     "141": {
-      "accuracy": 75.0,
-      "correct": 3,
+      "accuracy": 100.0,
+      "correct": 4,
       "total": 4
     },
     "142": {
-      "accuracy": 100.0,
-      "correct": 8,
+      "accuracy": 50.0,
+      "correct": 4,
       "total": 8
     },
     "143": {
-      "accuracy": 42.857142857142854,
-      "correct": 3,
+      "accuracy": 57.14285714285714,
+      "correct": 4,
       "total": 7
     },
     "144": {
@@ -751,8 +751,8 @@
       "total": 6
     },
     "149": {
-      "accuracy": 60.0,
-      "correct": 3,
+      "accuracy": 80.0,
+      "correct": 4,
       "total": 5
     },
     "150": {
@@ -761,18 +761,18 @@
       "total": 5
     },
     "151": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "152": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 71.42857142857143,
+      "correct": 5,
       "total": 7
     },
     "153": {
-      "accuracy": 42.857142857142854,
-      "correct": 3,
+      "accuracy": 57.14285714285714,
+      "correct": 4,
       "total": 7
     },
     "154": {
@@ -796,8 +796,8 @@
       "total": 6
     },
     "158": {
-      "accuracy": 85.71428571428571,
-      "correct": 6,
+      "accuracy": 71.42857142857143,
+      "correct": 5,
       "total": 7
     },
     "159": {
@@ -811,8 +811,8 @@
       "total": 7
     },
     "161": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "162": {
@@ -821,18 +821,18 @@
       "total": 7
     },
     "163": {
-      "accuracy": 100.0,
-      "correct": 5,
+      "accuracy": 80.0,
+      "correct": 4,
       "total": 5
     },
     "164": {
-      "accuracy": 100.0,
-      "correct": 6,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "165": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "166": {
@@ -846,8 +846,8 @@
       "total": 6
     },
     "168": {
-      "accuracy": 80.0,
-      "correct": 4,
+      "accuracy": 100.0,
+      "correct": 5,
       "total": 5
     },
     "169": {
@@ -866,18 +866,18 @@
       "total": 6
     },
     "172": {
+      "accuracy": 100.0,
+      "correct": 6,
+      "total": 6
+    },
+    "173": {
       "accuracy": 66.66666666666666,
       "correct": 4,
       "total": 6
     },
-    "173": {
+    "174": {
       "accuracy": 83.33333333333334,
       "correct": 5,
-      "total": 6
-    },
-    "174": {
-      "accuracy": 100.0,
-      "correct": 6,
       "total": 6
     },
     "175": {
@@ -886,8 +886,8 @@
       "total": 7
     },
     "176": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "177": {
@@ -896,8 +896,8 @@
       "total": 5
     },
     "178": {
-      "accuracy": 50.0,
-      "correct": 3,
+      "accuracy": 66.66666666666666,
+      "correct": 4,
       "total": 6
     },
     "179": {
@@ -911,28 +911,28 @@
       "total": 6
     },
     "181": {
-      "accuracy": 50.0,
-      "correct": 2,
+      "accuracy": 100.0,
+      "correct": 4,
       "total": 4
     },
     "182": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "183": {
-      "accuracy": 16.666666666666664,
-      "correct": 1,
+      "accuracy": 83.33333333333334,
+      "correct": 5,
       "total": 6
     },
     "184": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 57.14285714285714,
+      "correct": 4,
       "total": 7
     },
     "185": {
-      "accuracy": 57.14285714285714,
-      "correct": 4,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "186": {
@@ -946,8 +946,8 @@
       "total": 8
     },
     "188": {
-      "accuracy": 100.0,
-      "correct": 7,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "189": {
@@ -966,13 +966,13 @@
       "total": 8
     },
     "192": {
-      "accuracy": 57.14285714285714,
-      "correct": 4,
+      "accuracy": 85.71428571428571,
+      "correct": 6,
       "total": 7
     },
     "193": {
-      "accuracy": 60.0,
-      "correct": 3,
+      "accuracy": 80.0,
+      "correct": 4,
       "total": 5
     },
     "194": {
@@ -991,18 +991,18 @@
       "total": 6
     },
     "197": {
-      "accuracy": 100.0,
-      "correct": 5,
+      "accuracy": 80.0,
+      "correct": 4,
       "total": 5
     },
     "198": {
-      "accuracy": 85.71428571428571,
-      "correct": 6,
+      "accuracy": 57.14285714285714,
+      "correct": 4,
       "total": 7
     },
     "199": {
-      "accuracy": 100.0,
-      "correct": 5,
+      "accuracy": 80.0,
+      "correct": 4,
       "total": 5
     }
   }

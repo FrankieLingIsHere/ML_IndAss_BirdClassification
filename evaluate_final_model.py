@@ -2,6 +2,7 @@
 Final Model Evaluation Script for Bird Classification
 Calculates Top-1 accuracy and Average accuracy per class as required.
 """
+# -*- coding: utf-8 -*-
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -12,24 +13,74 @@ from collections import defaultdict
 from models import BirdClassifier
 from data_loader import BirdDataset
 import torchvision.transforms as transforms
+import argparse
+import glob
 
-def load_model(model_path, num_classes=200, device='cpu'):
-    """Load the trained model"""
+def load_model(model_path, num_classes=200, device=torch.device('cpu')):
+    """Load the trained model.
+
+    This loader handles different checkpoint formats:
+    - raw state_dict saved with torch.save(model.state_dict())
+    - wrapped checkpoints like {'state_dict': ..., 'epoch': ..., 'val_acc': ...}
+    - DataParallel checkpoints with 'module.' prefixes
+    It will attempt strict loading first and fall back to prefix-cleaning and non-strict loading if needed.
+    """
     print("Loading model from: {}".format(model_path))
-    
+
     # Create model with EfficientNet-B3 architecture (as used in training)
     model = BirdClassifier(
-        num_classes=num_classes, 
+        num_classes=num_classes,
         architecture='efficientnet_b3',
-        pretrained=False,  # We're loading trained weights
-        dropout_rate=0.3   # Stage 2 dropout rate
+        pretrained=False,
+        dropout_rate=0.3
     )
-    
-    # Load the trained weights
-    model.load_state_dict(torch.load(model_path, map_location=device))
+
+    # Load checkpoint and extract state_dict if wrapped
+    ckpt = torch.load(model_path, map_location=device)
+    if isinstance(ckpt, dict):
+        # Common wrapper keys
+        if 'state_dict' in ckpt:
+            state = ckpt['state_dict']
+        elif 'model_state' in ckpt:
+            state = ckpt['model_state']
+        else:
+            # Might already be a state_dict but packaged with other keys
+            # Try to detect by finding tensors in values
+            maybe_state = {k: v for k, v in ckpt.items() if isinstance(v, torch.Tensor)}
+            if maybe_state:
+                state = maybe_state
+            else:
+                # Last resort: assume ckpt itself is the state dict
+                state = ckpt
+    else:
+        state = ckpt
+
+    # If keys are prefixed with 'module.', strip this (DataParallel compatibility)
+    def strip_module_prefix(state_dict):
+        new_state = {}
+        for k, v in state_dict.items():
+            new_k = k
+            if k.startswith('module.'):
+                new_k = k[len('module.'):]
+            new_state[new_k] = v
+        return new_state
+
+    try:
+        # Try strict loading first
+        model.load_state_dict(state)
+    except RuntimeError as e:
+        # Attempt to clean prefixes and try again
+        try:
+            cleaned = strip_module_prefix(state)
+            model.load_state_dict(cleaned, strict=False)
+            print('Warning: loaded state_dict with strict=False after cleaning module prefixes.')
+        except Exception:
+            # Final fallback: try loading with non-strict as-is
+            model.load_state_dict(state, strict=False)
+            print('Warning: loaded state_dict with strict=False (fallback).')
+
     model.to(device)
     model.eval()
-    
     return model
 
 def create_test_loader(data_dir='data', batch_size=32):
@@ -170,13 +221,13 @@ def print_results(results, class_names=None):
     print("="*80)
     
     # Primary metrics (as required)
-    print("\n📊 PRIMARY EVALUATION METRICS:")
+    print("\nPRIMARY EVALUATION METRICS:")
     print("="*40)
     print("Top-1 Accuracy: {:.2f}%".format(results['top1_accuracy']))
     print("Average Accuracy per Class: {:.2f}%".format(results['average_accuracy_per_class']))
     
     # Additional details
-    print("\n📈 DETAILED STATISTICS:")
+    print("\nDETAILED STATISTICS:")
     print("="*40)
     print("Total test samples: {}".format(results['total_samples']))
     print("Correctly classified: {}".format(results['total_correct']))
@@ -188,21 +239,21 @@ def print_results(results, class_names=None):
         print("Best class accuracy: {:.2f}%".format(max(class_accs)))
         print("Worst class accuracy: {:.2f}%".format(min(class_accs)))
         print("Standard deviation: {:.2f}%".format(np.std(class_accs)))
-        
+
         # Show top 5 best and worst performing classes
         sorted_classes = sorted(
             results['per_class_details'].items(), 
             key=lambda x: x[1]['accuracy'], 
             reverse=True
         )
-        
-        print("\n🏆 TOP 5 BEST PERFORMING CLASSES:")
+
+        print("\nTOP 5 BEST PERFORMING CLASSES:")
         print("="*40)
         for i, (class_id, details) in enumerate(sorted_classes[:5]):
             class_name = class_names[class_id] if class_names and class_id < len(class_names) else "Class_{}".format(class_id)
             print("{}. {}: {:.2f}% ({}/{})".format(i+1, class_name, details['accuracy'], details['correct'], details['total']))
-        
-        print("\n⚠️  TOP 5 WORST PERFORMING CLASSES:")
+
+        print("\nTOP 5 WORST PERFORMING CLASSES:")
         print("="*40)
         for i, (class_id, details) in enumerate(sorted_classes[-5:]):
             class_name = class_names[class_id] if class_names and class_id < len(class_names) else "Class_{}".format(class_id)
@@ -229,7 +280,7 @@ def save_results(results, filepath='evaluation_results.json'):
     with open(filepath, 'w') as f:
         json.dump(results_json, f, indent=2)
     
-    print("\n💾 Results saved to: {}".format(filepath))
+    print("\nResults saved to: {}".format(filepath))
 
 def main():
     """Main evaluation function"""
@@ -237,11 +288,29 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Using device: {}".format(device))
     
-    # Model path (adjust if needed)
-    model_path = 'results_stage2_accelerated/best_model.pth'
+    # CLI: allow specifying a model path; otherwise auto-select
+    parser = argparse.ArgumentParser(description='Evaluate a saved checkpoint')
+    parser.add_argument('--model', type=str, default=None, help='Path to model checkpoint (.pth). If omitted, prefers best_model_finetuned.pth then best_model.pth in results_stage2_accelerated')
+    args = parser.parse_args()
+
+    def find_default_checkpoint():
+        base = 'results_stage2_accelerated'
+        candidates = [os.path.join(base, 'best_model_finetuned.pth'), os.path.join(base, 'best_model.pth')]
+        for c in candidates:
+            if os.path.exists(c):
+                return c
+        # fallback: pick latest .pth in the folder
+        files = glob.glob(os.path.join(base, '*.pth'))
+        if files:
+            files = sorted(files, key=os.path.getmtime, reverse=True)
+            return files[0]
+        return None
+
+    # Model path (from CLI or auto-select)
+    model_path = args.model if args.model else find_default_checkpoint()
     
     # Check if model exists
-    if not os.path.exists(model_path):
+    if not model_path or not os.path.exists(model_path):
         print("❌ Model file not found: {}".format(model_path))
         print("Please ensure your trained model is saved in the correct location.")
         return
@@ -251,31 +320,31 @@ def main():
         class_names = load_class_names('class_names.json')
         # Use 200 classes to match the saved model
         num_classes = 200  # Your model was trained with 200 classes
-        
+
         # Load model
-        model = load_model(model_path, num_classes, str(device))
-        print("✅ Model loaded successfully!")
-        
+        model = load_model(model_path, num_classes, device)
+        print("Model loaded successfully.")
+
         # Create test data loader
         test_loader = create_test_loader(data_dir='data', batch_size=32)
-        print("✅ Test data loader created. Number of batches: {}".format(len(test_loader)))
-        
+        print("Test data loader created. Number of batches: {}".format(len(test_loader)))
+
         # Evaluate model
         results = evaluate_model(model, test_loader, device)
-        
+
         # Print results
         print_results(results, class_names)
-        
+
         # Save results
         save_results(results, 'final_evaluation_results.json')
-        
-        print("\n✅ EVALUATION COMPLETED SUCCESSFULLY!")
-        print("📋 Use these metrics in your report:")
+
+        print("\nEVALUATION COMPLETED SUCCESSFULLY!")
+        print("Use these metrics in your report:")
         print("   - Top-1 Accuracy: {:.2f}%".format(results['top1_accuracy']))
         print("   - Average Accuracy per Class: {:.2f}%".format(results['average_accuracy_per_class']))
-        
+
     except Exception as e:
-        print("❌ Error during evaluation: {}".format(str(e)))
+        print("Error during evaluation: {}".format(str(e)))
         import traceback
         traceback.print_exc()
 

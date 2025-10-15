@@ -74,6 +74,8 @@ demo_results/
 checkpoints/
 *.zip
 *.jpeg
+*.json
+*.csv
 
 # But keep example annotation files
 !train.txt

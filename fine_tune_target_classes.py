@@ -319,23 +319,97 @@ if __name__ == '__main__':
     # Use EfficientNet-B4 by default for stronger representational power on Colab/GPU.
     model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b4', pretrained=False, dropout_rate=0.3)
     ckpt = torch.load(BEST_MODEL_PATH, map_location=device)
-    # Robust checkpoint handling: support {'state_dict': ...}, {'model_state': ...}, or raw state_dict
+    # Robust checkpoint handling: look for common wrapper keys then fall back to assuming a raw state_dict
+    state = None
     if isinstance(ckpt, dict):
-        if 'state_dict' in ckpt:
-            state = ckpt['state_dict']
-        elif 'model_state' in ckpt:
-            state = ckpt['model_state']
-        else:
-            # maybe it's already a state_dict or wrapped with 'module.' prefixes
-            state = ckpt
+        for candidate in ('state_dict', 'model_state_dict', 'model_state', 'model'):
+            if candidate in ckpt:
+                state = ckpt[candidate]
+                print(f"Loaded checkpoint container key: '{candidate}' from {BEST_MODEL_PATH}")
+                break
+        if state is None:
+            # If ckpt looks like a state_dict (tensor values), use it; otherwise keep ckpt and try to extract later
+            # Heuristic: if many values are tensors/ndarrays, treat as state_dict
+            try:
+                sample_vals = list(ckpt.values())[:5]
+                if all(hasattr(v, 'dtype') or hasattr(v, 'shape') for v in sample_vals):
+                    state = ckpt
+                else:
+                    # last resort: maybe the real state dict is under a different key name; try to find the first dict-like value
+                    for v in ckpt.values():
+                        if isinstance(v, dict):
+                            state = v
+                            print('Auto-selected nested dict from checkpoint as state_dict')
+                            break
+            except Exception:
+                state = ckpt
     else:
         state = ckpt
 
-    # If keys are prefixed by 'module.', strip them
-    if isinstance(state, dict) and all(isinstance(k, str) and k.startswith('module.') for k in state.keys()):
-        state = {k.replace('module.', ''): v for k, v in state.items()}
+    # If keys are prefixed by 'module.', strip that prefix for compatibility (applies to nested maps too)
+    def strip_module_prefix(d):
+        return {k.replace('module.', '') if isinstance(k, str) else k: v for k, v in d.items()}
 
-    model.load_state_dict(state)
+    if isinstance(state, dict):
+        any_module_prefixed = any(isinstance(k, str) and k.startswith('module.') for k in state.keys())
+        if any_module_prefixed:
+            state = strip_module_prefix(state)
+
+    # Heuristic: if the selected 'state' still looks like an outer checkpoint (has 'epoch' or 'optimizer_state_dict'), try to unwrap nested dicts
+    def looks_like_state_dict_like(d):
+        if not isinstance(d, dict):
+            return False
+        # If any key looks like model layer prefix, assume it's the correct state dict
+        for k in d.keys():
+            if isinstance(k, str) and (k.startswith('backbone') or k.startswith('features') or k.startswith('conv') or k.startswith('classifier') or k.startswith('layer')):
+                return True
+        # If values look like tensors (have dtype/shape), assume state dict
+        sample_vals = list(d.values())[:8]
+        tensor_like = 0
+        for v in sample_vals:
+            if hasattr(v, 'dtype') or hasattr(v, 'shape'):
+                tensor_like += 1
+        if tensor_like >= 1:
+            return True
+        return False
+
+    if isinstance(state, dict) and not looks_like_state_dict_like(state):
+        # try common nested keys
+        for cand in ('state_dict', 'model_state_dict', 'model_state', 'model'):
+            if cand in state and isinstance(state[cand], dict) and looks_like_state_dict_like(state[cand]):
+                print(f"Unwrapping nested checkpoint key '{cand}' as model state_dict")
+                state = state[cand]
+                break
+        else:
+            # try to auto-find a nested dict that looks like a model state_dict
+            for v in state.values():
+                if isinstance(v, dict) and looks_like_state_dict_like(v):
+                    print('Auto-unwrapped nested dict as model state_dict')
+                    state = v
+                    break
+
+    # Validate that we ended up with a mapping-like state dict
+    if state is None:
+        raise RuntimeError(f'No valid state_dict found inside checkpoint: {BEST_MODEL_PATH}. Check the file contents.')
+    if not isinstance(state, dict):
+        # try to coerce common Mapping types to dict
+        try:
+            state = dict(state)
+        except Exception:
+            raise RuntimeError(f'Checkpoint loaded from {BEST_MODEL_PATH} did not contain a dict-like state_dict; got type {type(state)}')
+
+    # Attempt strict load first; on failure fall back to non-strict and print diagnostics
+    try:
+        model.load_state_dict(state)
+        print('Checkpoint loaded with strict=True')
+    except Exception as e:
+        print('Warning: strict load failed:', e)
+        try:
+            model.load_state_dict(state, strict=False)
+            print('Checkpoint loaded with strict=False (missing/unexpected keys ignored)')
+        except Exception as e2:
+            # Re-raise with additional context to help debugging
+            raise RuntimeError(f'Failed to load checkpoint from {BEST_MODEL_PATH}: {e2}')
     model.to(device)
 
     # Freeze backbone initially

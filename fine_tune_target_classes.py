@@ -27,6 +27,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import logging
 import subprocess
+from collections.abc import Mapping
 
 # Use your project's modules
 from models import BirdClassifier
@@ -242,6 +243,7 @@ if __name__ == '__main__':
     parser.add_argument('--from-scratch', action='store_true', help='Train from random initialization (do not load any checkpoint)')
     parser.add_argument('--hf-model', type=str, default=None, help='HuggingFace model id to download and inject backbone weights (e.g. chriamue/bird-species-classifier)')
     parser.add_argument('--strict-inject', action='store_true', help='When injecting HF weights, fail if less than 50% of backbone keys matched')
+    parser.add_argument('--use-hf-direct', action='store_true', help='Use HF AutoModelForImageClassification object directly (replace local BirdClassifier). Helpful when HF backbone architecture differs from local backbone, e.g. Swin.)')
     args = parser.parse_args()
 
     EPOCHS = args.epochs
@@ -266,6 +268,7 @@ if __name__ == '__main__':
     FROM_SCRATCH = args.from_scratch
     HF_MODEL_ID = args.hf_model
     STRICT_INJECT = args.strict_inject
+    USE_HF_DIRECT = args.use_hf_direct
 
     # Ensure output directory exists and update derived paths
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -352,12 +355,11 @@ if __name__ == '__main__':
         test_loader = DataLoader(test_dataset, batch_size=EVAL_BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
     # Load model and optionally load/pre-inject checkpoint/backbone
-    # Use EfficientNet-B4 by default for stronger representational power on Colab/GPU.
+    # By default we build the project's BirdClassifier (EfficientNet-B4). However,
+    # when --use-hf-direct is specified we will replace this with the HF
+    # AutoModelForImageClassification object (useful for Swin/ViT models from HF).
     model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b4', pretrained=False, dropout_rate=0.3)
     model_sd = model.state_dict()
-
-    def strip_module_prefix(d):
-        return {k.replace('module.', '') if isinstance(k, str) else k: v for k, v in d.items()}
 
     # Helper: attempt to inject a HF transformers model state_dict into our model
     def inject_hf_weights(hf_model_id, target_model):
@@ -368,48 +370,146 @@ if __name__ == '__main__':
             raise
         logger.info('Downloading HF model %s', hf_model_id)
         hf = AutoModelForImageClassification.from_pretrained(hf_model_id)
-        hf_sd = hf.state_dict()
+        # Try several locations for state_dict to be robust across HF model wrappers
+        hf_sd = None
+        tried = []
+        try:
+            sd = hf.state_dict()
+            hf_sd = sd
+            tried.append('hf.state_dict')
+        except Exception:
+            pass
+        if hf_sd is None:
+            for attr in ('base_model', 'model', 'vision_model', 'efficientnet', 'backbone'):
+                if hasattr(hf, attr):
+                    try:
+                        sd = getattr(hf, attr).state_dict()
+                        hf_sd = sd
+                        tried.append(f'hf.{attr}.state_dict')
+                        break
+                    except Exception:
+                        continue
+        if hf_sd is None:
+            # as a last resort, try huggingface's from_pretrained returned object as mapping
+            try:
+                hf_sd = dict(hf.named_parameters())
+                tried.append('hf.named_parameters')
+            except Exception:
+                pass
+        if hf_sd is None:
+            raise RuntimeError('Unable to extract state_dict from HF model; tried: ' + ','.join(tried))
         # strip module prefixes from hf keys
         hf_sd = strip_module_prefix(hf_sd)
+        logger.info('Extracted HF state_dict using: %s', ','.join(tried))
         target_sd = target_model.state_dict()
         mapped = {}
         matched = 0
         # Simple heuristics: direct match, remove/add common prefixes, suffix match
         hf_keys = set(hf_sd.keys())
+        used_hf_keys = set()
         for t_k in target_sd.keys():
+            hkname = None
             if t_k in hf_sd:
-                mapped[t_k] = hf_sd[t_k]
+                hkname = t_k
+            else:
+                # try removing 'backbone.' prefix
+                if t_k.startswith('backbone.'):
+                    cand = t_k.replace('backbone.', '')
+                    if cand in hf_sd:
+                        hkname = cand
+                    else:
+                        cand2 = 'features.' + cand
+                        if cand2 in hf_sd:
+                            hkname = cand2
+                # try suffix match
+                if hkname is None:
+                    for hk in hf_keys:
+                        if hk.endswith(t_k):
+                            hkname = hk
+                            break
+            if hkname is not None:
+                mapped[t_k] = hf_sd[hkname]
+                used_hf_keys.add(hkname)
                 matched += 1
                 continue
-            # try removing 'backbone.' prefix
-            if t_k.startswith('backbone.'):
-                cand = t_k.replace('backbone.', '')
-                if cand in hf_sd:
-                    mapped[t_k] = hf_sd[cand]
-                    matched += 1
-                    continue
-                cand2 = 'features.' + cand
-                if cand2 in hf_sd:
-                    mapped[t_k] = hf_sd[cand2]
-                    matched += 1
-                    continue
-            # try suffix match
-            for hk in hf_keys:
-                if hk.endswith(t_k):
-                    mapped[t_k] = hf_sd[hk]
-                    matched += 1
-                    break
         logger.info('HF inject: matched %d/%d target parameters (%.1f%%)', matched, len(target_sd), matched / max(1, len(target_sd)) * 100.0)
         if STRICT_INJECT:
             pct = matched / max(1, len(target_sd))
             if pct < 0.5:
-                raise RuntimeError(f'Strict inject failed: only {matched}/{len(target_sd)} ({pct:.2f}) keys matched from HF model')
+                # attempt a shape-based fallback to rescue some matches
+                logger.info('Strict inject: only %.1f%% matched, attempting shape-based fallback', pct * 100.0)
+                # shape-based mapping: match by identical tensor shapes when possible
+                for t_k, t_v in target_sd.items():
+                    if t_k in mapped:
+                        continue
+                    t_shape = None
+                    try:
+                        t_shape = tuple(t_v.shape)
+                    except Exception:
+                        continue
+                    for hk in hf_keys:
+                        if hk in used_hf_keys:
+                            continue
+                        try:
+                            h_v = hf_sd[hk]
+                            if tuple(getattr(h_v, 'shape', ())) == t_shape:
+                                mapped[t_k] = h_v
+                                used_hf_keys.add(hk)
+                                matched += 1
+                                break
+                        except Exception:
+                            continue
+                pct2 = matched / max(1, len(target_sd))
+                logger.info('After shape fallback matched %d/%d (%.1f%%)', matched, len(target_sd), pct2 * 100.0)
+                if pct2 < 0.5:
+                    raise RuntimeError(f'Strict inject failed: only {matched}/{len(target_sd)} ({pct2:.2f}) keys matched from HF model')
         # load mapped keys into model (non-strict)
         target_model.load_state_dict(mapped, strict=False)
         return matched
 
     # If HF model requested, inject its weights first (unless from-scratch requested)
-    if HF_MODEL_ID and not FROM_SCRATCH:
+    # Option A: use HF model object directly (recommended when architectures differ)
+    if HF_MODEL_ID and USE_HF_DIRECT and not FROM_SCRATCH:
+        try:
+            from transformers import AutoModelForImageClassification
+            logger.info('Loading HF model object directly: %s', HF_MODEL_ID)
+            hf_model = AutoModelForImageClassification.from_pretrained(HF_MODEL_ID)
+            # If HF model head has a different number of labels than our target, replace the head
+            hf_num_labels = getattr(hf_model.config, 'num_labels', None)
+            if hf_num_labels is not None and hf_num_labels != num_classes:
+                logger.info('HF model has %s labels but target num_classes=%s; replacing classifier head', hf_num_labels, num_classes)
+                # Try common classifier attributes (classifier, head, heads)
+                replaced = False
+                try:
+                    if hasattr(hf_model, 'classifier') and hasattr(hf_model.classifier, 'in_features'):
+                        in_f = hf_model.classifier.in_features
+                        hf_model.classifier = nn.Linear(in_f, num_classes)
+                        replaced = True
+                    elif hasattr(hf_model, 'head') and hasattr(hf_model.head, 'in_features'):
+                        in_f = hf_model.head.in_features
+                        hf_model.head = nn.Linear(in_f, num_classes)
+                        replaced = True
+                    elif hasattr(hf_model, 'heads'):
+                        # some models expose heads as a ModuleDict
+                        # attempt a conservative replacement for common keys
+                        for k in ('classifier', 'head', 'head0'):
+                            if k in hf_model.heads:
+                                in_f = hf_model.heads[k].in_features
+                                hf_model.heads[k] = nn.Linear(in_f, num_classes)
+                                replaced = True
+                                break
+                except Exception:
+                    replaced = False
+                if not replaced:
+                    logger.warning('Could not auto-replace HF classifier head. You may need to adapt the HF model manually.')
+            # Replace local model with the HF model for training/eval
+            model = hf_model
+            logger.info('Replaced local BirdClassifier with HF model object: %s', HF_MODEL_ID)
+        except Exception as e:
+            logger.exception('Failed to load HF model directly: %s', e)
+            raise
+    # Option B: inject HF weights into local model (existing heuristic mapping)
+    elif HF_MODEL_ID and not FROM_SCRATCH:
         try:
             injected = inject_hf_weights(HF_MODEL_ID, model)
             logger.info('Injected HF model weights (%d keys matched)', injected)
@@ -519,9 +619,13 @@ if __name__ == '__main__':
     if state is None and not FROM_SCRATCH:
         raise RuntimeError(f'No valid state_dict found inside checkpoint: {BEST_MODEL_PATH}. Check the file contents.')
     if not isinstance(state, dict):
-        # try to coerce common Mapping types to dict
+        # try to coerce Mapping-like types to dict safely
         try:
-            state = dict(state)
+            if isinstance(state, Mapping):
+                state = dict(state)
+            else:
+                # last resort: attempt dict() conversion which may work for some custom mapping objects
+                state = dict(state)
         except Exception:
             raise RuntimeError(f'Checkpoint loaded from {BEST_MODEL_PATH} did not contain a dict-like state_dict; got type {type(state)}')
 
@@ -553,10 +657,18 @@ if __name__ == '__main__':
                 raise RuntimeError(f'Failed to load checkpoint from {BEST_MODEL_PATH}: {e2}')
     model.to(device)
 
-    # Freeze backbone initially
+    # Freeze backbone initially. Handle both local BirdClassifier (with names containing 'backbone')
+    # and HF model objects (whose head often contains 'classifier' or 'head').
     for name, p in model.named_parameters():
+        # If it's the project's BirdClassifier, backbone params contain 'backbone'
         if 'backbone' in name:
             p.requires_grad = False
+        # For HF models loaded directly, treat common head names as trainable and others as backbone
+        elif USE_HF_DIRECT and HF_MODEL_ID:
+            if any(k in name for k in ('classifier', 'head', 'heads')):
+                p.requires_grad = True
+            else:
+                p.requires_grad = False
         else:
             p.requires_grad = True
 

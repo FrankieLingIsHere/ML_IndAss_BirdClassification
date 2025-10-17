@@ -25,6 +25,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import logging
+import subprocess
 
 # Use your project's modules
 from models import BirdClassifier
@@ -232,11 +234,14 @@ if __name__ == '__main__':
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint to resume from')
     parser.add_argument('--out-dir', type=str, default='./results/fine_tune', help='Directory to save checkpoints')
     parser.add_argument('--grad-accum', type=int, default=GRAD_ACCUM, help='Gradient accumulation steps')
-    parser.add_argument('--no-early-stop', action='store_true', help='Disable early stopping based on avg per-class accuracy')
+    parser.add_argument('--early-stop', action='store_true', help='Enable early stopping based on avg per-class accuracy')
     parser.add_argument('--allow-test-selection', action='store_true', help='(Unsafe) enable model selection using Test metrics (will evaluate test each epoch and save test-best checkpoints)')
     parser.add_argument('--final-mode', type=str, default='topk_avg', choices=['topk_avg','swa','last'], help='How to produce final single checkpoint: topk_avg (average top-K val epochs), swa (average last-N epochs), last (final epoch)')
     parser.add_argument('--final-k', type=int, default=5, help='K for topk_avg or N for swa (number of checkpoints to average)')
     parser.add_argument('--save-final-name', type=str, default='final_model_averaged.pth', help='Filename for the final produced checkpoint')
+    parser.add_argument('--from-scratch', action='store_true', help='Train from random initialization (do not load any checkpoint)')
+    parser.add_argument('--hf-model', type=str, default=None, help='HuggingFace model id to download and inject backbone weights (e.g. chriamue/bird-species-classifier)')
+    parser.add_argument('--strict-inject', action='store_true', help='When injecting HF weights, fail if less than 50% of backbone keys matched')
     args = parser.parse_args()
 
     EPOCHS = args.epochs
@@ -247,7 +252,7 @@ if __name__ == '__main__':
     RESUME_CKPT = args.resume
     OUT_DIR = args.out_dir
     GRAD_ACCUM = args.grad_accum
-    ENABLE_EARLY_STOP = not args.no_early_stop
+    ENABLE_EARLY_STOP = args.early_stop
     ALLOW_TEST_SELECTION = args.allow_test_selection
     FINAL_MODE = args.final_mode
     FINAL_K = args.final_k
@@ -258,22 +263,53 @@ if __name__ == '__main__':
     UNFREEZE_AT = args.unfreeze_at
     PATIENCE = args.patience
     BEST_MODEL_PATH = args.best_model_path
+    FROM_SCRATCH = args.from_scratch
+    HF_MODEL_ID = args.hf_model
+    STRICT_INJECT = args.strict_inject
 
     # Ensure output directory exists and update derived paths
     os.makedirs(OUT_DIR, exist_ok=True)
     OUT_CKPT = os.path.join(OUT_DIR, 'best_model_finetuned.pth')
     HISTORY_PATH = os.path.join(OUT_DIR, 'fine_tune_history.json')
 
+    # --- Logging / Run config snapshot ---
+    logger = logging.getLogger('fine_tune')
+    logger.setLevel(logging.INFO)
+    fh = logging.FileHandler(os.path.join(OUT_DIR, 'run.log'))
+    fmt = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+    fh.setFormatter(fmt)
+    logger.addHandler(fh)
+    logger.addHandler(logging.StreamHandler())
+
+    # Save a small run config for reproducibility
+    run_config = {
+        'args': vars(args),
+        'torch_version': torch.__version__,
+    }
+    try:
+        git_sha = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], stderr=subprocess.DEVNULL).decode().strip()
+        run_config['git_sha'] = git_sha
+    except Exception:
+        run_config['git_sha'] = None
+    with open(os.path.join(OUT_DIR, 'run_config.json'), 'w') as f:
+        json.dump(run_config, f, indent=2)
+    logger.info('Run config written to %s', os.path.join(OUT_DIR, 'run_config.json'))
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Device:', device)
     print(f'Gradual unfreeze at epoch {UNFREEZE_AT}; early stopping patience {PATIENCE}')
 
-    # If user provided a resume checkpoint, use it; otherwise require the default BEST_MODEL_PATH
-    if RESUME_CKPT:
-        BEST_MODEL_PATH = RESUME_CKPT
+    # Check loading mode: from-scratch, HF model injection, or resume from checkpoint
+    if FROM_SCRATCH:
+        logger.info('Running from scratch; no checkpoint will be loaded')
     else:
-        if not os.path.exists(BEST_MODEL_PATH):
-            raise AssertionError('Best model not found: {}'.format(BEST_MODEL_PATH))
+        # prefer explicit resume path
+        if RESUME_CKPT:
+            BEST_MODEL_PATH = RESUME_CKPT
+        # If HF model id provided, we'll inject its weights (below)
+        elif HF_MODEL_ID is None:
+            if not os.path.exists(BEST_MODEL_PATH):
+                raise AssertionError('Best model not found: {}'.format(BEST_MODEL_PATH))
 
     # Load evaluation results if present; otherwise fall back to no targeted boosting
     if os.path.exists(EVAL_RESULTS_PATH):
@@ -315,9 +351,100 @@ if __name__ == '__main__':
         test_dataset = test_loader.dataset
         test_loader = DataLoader(test_dataset, batch_size=EVAL_BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS)
 
-    # Load model and checkpoint
+    # Load model and optionally load/pre-inject checkpoint/backbone
     # Use EfficientNet-B4 by default for stronger representational power on Colab/GPU.
     model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b4', pretrained=False, dropout_rate=0.3)
+    model_sd = model.state_dict()
+
+    def strip_module_prefix(d):
+        return {k.replace('module.', '') if isinstance(k, str) else k: v for k, v in d.items()}
+
+    # Helper: attempt to inject a HF transformers model state_dict into our model
+    def inject_hf_weights(hf_model_id, target_model):
+        try:
+            from transformers import AutoModelForImageClassification
+        except Exception as e:
+            logger.error('Transformers not installed: please pip install transformers')
+            raise
+        logger.info('Downloading HF model %s', hf_model_id)
+        hf = AutoModelForImageClassification.from_pretrained(hf_model_id)
+        hf_sd = hf.state_dict()
+        # strip module prefixes from hf keys
+        hf_sd = strip_module_prefix(hf_sd)
+        target_sd = target_model.state_dict()
+        mapped = {}
+        matched = 0
+        # Simple heuristics: direct match, remove/add common prefixes, suffix match
+        hf_keys = set(hf_sd.keys())
+        for t_k in target_sd.keys():
+            if t_k in hf_sd:
+                mapped[t_k] = hf_sd[t_k]
+                matched += 1
+                continue
+            # try removing 'backbone.' prefix
+            if t_k.startswith('backbone.'):
+                cand = t_k.replace('backbone.', '')
+                if cand in hf_sd:
+                    mapped[t_k] = hf_sd[cand]
+                    matched += 1
+                    continue
+                cand2 = 'features.' + cand
+                if cand2 in hf_sd:
+                    mapped[t_k] = hf_sd[cand2]
+                    matched += 1
+                    continue
+            # try suffix match
+            for hk in hf_keys:
+                if hk.endswith(t_k):
+                    mapped[t_k] = hf_sd[hk]
+                    matched += 1
+                    break
+        logger.info('HF inject: matched %d/%d target parameters (%.1f%%)', matched, len(target_sd), matched / max(1, len(target_sd)) * 100.0)
+        if STRICT_INJECT:
+            pct = matched / max(1, len(target_sd))
+            if pct < 0.5:
+                raise RuntimeError(f'Strict inject failed: only {matched}/{len(target_sd)} ({pct:.2f}) keys matched from HF model')
+        # load mapped keys into model (non-strict)
+        target_model.load_state_dict(mapped, strict=False)
+        return matched
+
+    # If HF model requested, inject its weights first (unless from-scratch requested)
+    if HF_MODEL_ID and not FROM_SCRATCH:
+        try:
+            injected = inject_hf_weights(HF_MODEL_ID, model)
+            logger.info('Injected HF model weights (%d keys matched)', injected)
+        except Exception as e:
+            logger.exception('HF injection failed: %s', e)
+            raise
+
+    # If a resume or default BEST_MODEL_PATH exists and not from-scratch, load checkpoint file
+    state = None
+    if not FROM_SCRATCH and (RESUME_CKPT or (HF_MODEL_ID is None)):
+        ckpt = torch.load(BEST_MODEL_PATH, map_location=device)
+        # Robust checkpoint handling: look for common wrapper keys then fall back to assuming a raw state_dict
+        if isinstance(ckpt, dict):
+            for candidate in ('state_dict', 'model_state_dict', 'model_state', 'model'):
+                if candidate in ckpt:
+                    state = ckpt[candidate]
+                    logger.info("Loaded checkpoint container key: '%s' from %s", candidate, BEST_MODEL_PATH)
+                    break
+            if state is None:
+                try:
+                    sample_vals = list(ckpt.values())[:5]
+                    if all(hasattr(v, 'dtype') or hasattr(v, 'shape') for v in sample_vals):
+                        state = ckpt
+                    else:
+                        for v in ckpt.values():
+                            if isinstance(v, dict):
+                                state = v
+                                logger.info('Auto-selected nested dict from checkpoint as state_dict')
+                                break
+                except Exception:
+                    state = ckpt
+        else:
+            state = ckpt
+
+    # If keys are prefixed by 'module.', strip that prefix for compatibility (applies to nested maps too)
     ckpt = torch.load(BEST_MODEL_PATH, map_location=device)
     # Robust checkpoint handling: look for common wrapper keys then fall back to assuming a raw state_dict
     state = None
@@ -389,7 +516,7 @@ if __name__ == '__main__':
                     break
 
     # Validate that we ended up with a mapping-like state dict
-    if state is None:
+    if state is None and not FROM_SCRATCH:
         raise RuntimeError(f'No valid state_dict found inside checkpoint: {BEST_MODEL_PATH}. Check the file contents.')
     if not isinstance(state, dict):
         # try to coerce common Mapping types to dict
@@ -399,17 +526,31 @@ if __name__ == '__main__':
             raise RuntimeError(f'Checkpoint loaded from {BEST_MODEL_PATH} did not contain a dict-like state_dict; got type {type(state)}')
 
     # Attempt strict load first; on failure fall back to non-strict and print diagnostics
-    try:
-        model.load_state_dict(state)
-        print('Checkpoint loaded with strict=True')
-    except Exception as e:
-        print('Warning: strict load failed:', e)
+    if state is not None:
         try:
-            model.load_state_dict(state, strict=False)
-            print('Checkpoint loaded with strict=False (missing/unexpected keys ignored)')
-        except Exception as e2:
-            # Re-raise with additional context to help debugging
-            raise RuntimeError(f'Failed to load checkpoint from {BEST_MODEL_PATH}: {e2}')
+            model.load_state_dict(state)
+            logger.info('Checkpoint loaded with strict=True')
+        except Exception as e:
+            logger.warning('Strict load failed: %s', e)
+            try:
+                res = model.load_state_dict(state, strict=False)
+                # res is an IncompatibleKeys namedtuple with missing_keys/unexpected_keys
+                missing = getattr(res, 'missing_keys', None)
+                unexpected = getattr(res, 'unexpected_keys', None)
+                if missing is None and unexpected is None and isinstance(res, dict):
+                    # Older torch may return dict-like info
+                    missing = res.get('missing_keys', [])
+                    unexpected = res.get('unexpected_keys', [])
+                logger.info('Checkpoint loaded with strict=False; missing: %d, unexpected: %d', len(missing or []), len(unexpected or []))
+                # Diagnostic: percentage of model keys matched
+                model_keys = set(model.state_dict().keys())
+                state_keys = set(state.keys())
+                matched_keys = len(model_keys & state_keys)
+                pct = matched_keys / max(1, len(model_keys)) * 100.0
+                logger.info('Matched %d/%d model keys (%.1f%%)', matched_keys, len(model_keys), pct)
+            except Exception as e2:
+                logger.exception('Failed to load checkpoint from %s: %s', BEST_MODEL_PATH, e2)
+                raise RuntimeError(f'Failed to load checkpoint from {BEST_MODEL_PATH}: {e2}')
     model.to(device)
 
     # Freeze backbone initially
@@ -451,6 +592,7 @@ if __name__ == '__main__':
     optimizer = torch.optim.AdamW(param_groups, weight_decay=WEIGHT_DECAY)
 
     print(f'Out dir: {OUT_DIR}, Resuming from: {BEST_MODEL_PATH}')
+    print('Early stopping enabled:', ENABLE_EARLY_STOP)
 
     scheduler = ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=2)
 

@@ -9,6 +9,11 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, random_split, Subset
 from torchvision import transforms
+try:
+    # torchvision.transforms.RandAugment is available in newer torchvision
+    from torchvision.transforms import RandAugment
+except Exception:
+    RandAugment = None
 from PIL import Image
 import pandas as pd
 import numpy as np
@@ -187,7 +192,7 @@ class BirdDataset(Dataset):
             return dummy_image, label
 
 
-def get_data_transforms(image_size: int = 224, is_training: bool = True, augmentation_level: str = 'basic'):
+def get_data_transforms(image_size: int = 224, is_training: bool = True, augmentation_level: str = 'basic', use_randaugment: bool = False):
     """
     Get data transforms for training and validation.
     
@@ -211,6 +216,9 @@ def get_data_transforms(image_size: int = 224, is_training: bool = True, augment
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                                    std=[0.229, 0.224, 0.225])  # ImageNet stats
             ])
+            if use_randaugment and RandAugment is not None:
+                # Prepend RandAugment for stronger augmentation
+                transform = transforms.Compose([RandAugment(num_ops=2, magnitude=9)] + list(transform.transforms))
         elif augmentation_level == 'advanced':
             transform = transforms.Compose([
                 transforms.Resize((int(image_size * 1.1), int(image_size * 1.1))),
@@ -225,6 +233,8 @@ def get_data_transforms(image_size: int = 224, is_training: bool = True, augment
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 transforms.RandomErasing(p=0.2, scale=(0.02, 0.2), ratio=(0.3, 3.3))
             ])
+            if use_randaugment and RandAugment is not None:
+                transform = transforms.Compose([RandAugment(num_ops=2, magnitude=10)] + list(transform.transforms))
         elif augmentation_level == 'heavy':
             transform = transforms.Compose([
                 transforms.Resize((int(image_size * 1.15), int(image_size * 1.15))),
@@ -240,6 +250,8 @@ def get_data_transforms(image_size: int = 224, is_training: bool = True, augment
                 transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 transforms.RandomErasing(p=0.25, scale=(0.02, 0.25), ratio=(0.3, 3.3))
             ])
+            if use_randaugment and RandAugment is not None:
+                transform = transforms.Compose([RandAugment(num_ops=3, magnitude=10)] + list(transform.transforms))
         else:
             raise ValueError(f"Unknown augmentation level: {augmentation_level}")
     else:
@@ -256,7 +268,7 @@ def get_data_transforms(image_size: int = 224, is_training: bool = True, augment
 
 def create_data_loaders(train_dir: str, train_txt: str, test_dir: str, test_txt: str, 
                        batch_size: int = 32, image_size: int = 224, num_workers: int = 4,
-                       validation_split: float = 0.2, augmentation_level: str = 'advanced'):
+                       validation_split: float = 0.2, augmentation_level: str = 'advanced', use_randaugment: bool = False):
     """
     Create data loaders for training, validation, and testing.
     
@@ -275,7 +287,7 @@ def create_data_loaders(train_dir: str, train_txt: str, test_dir: str, test_txt:
         train_loader, val_loader, test_loader, num_classes, class_names
     """
     # Create transforms
-    train_transform = get_data_transforms(image_size, is_training=True, augmentation_level=augmentation_level)
+    train_transform = get_data_transforms(image_size, is_training=True, augmentation_level=augmentation_level, use_randaugment=use_randaugment)
     val_test_transform = get_data_transforms(image_size, is_training=False)
     
     # Create full training dataset

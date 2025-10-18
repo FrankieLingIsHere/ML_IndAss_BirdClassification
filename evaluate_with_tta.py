@@ -53,7 +53,7 @@ def load_model(model_path, num_classes=200):
     for k,v in state.items():
         nk = k.replace('module.','') if k.startswith('module.') else k
         new_state[nk]=v
-    model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b3', pretrained=False, dropout_rate=0.3)
+    model = BirdClassifier(num_classes=num_classes, architecture='efficientnet_b4', pretrained=False, dropout_rate=0.3)
     model.load_state_dict(new_state, strict=False)
     model.to(DEVICE)
     model.eval()

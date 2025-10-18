@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 import argparse
 import glob
 
-def load_model(model_path, num_classes=200, device=torch.device('cpu')):
+def load_model(model_path, num_classes=200, device=torch.device('cpu'), force_hf: bool = False, hf_model_id: str | None = None):
     """Load the trained model.
 
     This loader handles different checkpoint formats:
@@ -69,6 +69,91 @@ def load_model(model_path, num_classes=200, device=torch.device('cpu')):
             new_state[new_k] = v
         return new_state
 
+    # If user requested a forced HF model id, try that first (hub-based)
+    def _attempt_force_hf(hf_id):
+        try:
+            from transformers import AutoConfig, AutoModelForImageClassification
+            print(f'Force-HF requested; attempting to build HF model from hub id {hf_id}...')
+            cfg = AutoConfig.from_pretrained(hf_id, num_labels=num_classes)
+            hf_model = AutoModelForImageClassification.from_config(cfg)
+            cleaned_state = strip_module_prefix(state)
+            hf_state = hf_model.state_dict()
+            matched = sum(1 for k, v in cleaned_state.items() if k in hf_state and hasattr(v, 'shape') and v.shape == hf_state[k].shape)
+            hf_model.load_state_dict(cleaned_state, strict=False)
+            print(f'Loaded matched {matched} keys out of {len(hf_state)} HF model params (approx).')
+            hf_model.to(device)
+            hf_model.eval()
+            return hf_model
+        except Exception as e:
+            print(f'Force-HF load failed: {e}')
+            return None
+
+    # If user explicitly asked to force an HF model from the hub, try that
+    if force_hf and hf_model_id:
+        hf_loaded = _attempt_force_hf(hf_model_id)
+        if hf_loaded is not None:
+            return hf_loaded
+
+    # Heuristic: detect HF Swin-formatted checkpoints by key prefixes
+    hf_like = False
+    try:
+        sample_keys = list(state.keys())[:50]
+        for k in sample_keys:
+            if k.startswith('swin.') or k.startswith('swin') or k.startswith('transformer'):
+                hf_like = True
+                break
+    except Exception:
+        hf_like = False
+
+    if hf_like:
+        # Try to load as a Hugging Face Swin model (best-effort). If transformers isn't
+        # available or loading fails, fall back to the local BirdClassifier behavior.
+        try:
+            # If user provided a specific hf_model_id but didn't force it, try using its config
+            if hf_model_id:
+                try:
+                    from transformers import AutoConfig, AutoModelForImageClassification
+                    print(f'Detected HF-like checkpoint; attempting to use hub id {hf_model_id} for architecture...')
+                    cfg = AutoConfig.from_pretrained(hf_model_id, num_labels=num_classes)
+                    hf_model = AutoModelForImageClassification.from_config(cfg)
+                except Exception:
+                    # Fallback to Swin-specific config
+                    from transformers import SwinConfig, SwinForImageClassification
+                    print('Falling back to SwinConfig() since AutoConfig.from_pretrained failed for provided hf_model_id')
+                    cfg = SwinConfig(num_labels=num_classes)
+                    hf_model = SwinForImageClassification(cfg)
+            else:
+                from transformers import SwinConfig, SwinForImageClassification
+                print('Detected HF Swin-style checkpoint. Attempting to build HF Swin model and load weights...')
+                cfg = SwinConfig(num_labels=num_classes)
+                hf_model = SwinForImageClassification(cfg)
+
+            # Try strict loading first using HF model's state dict
+            hf_state = hf_model.state_dict()
+            # Clean module prefixes in saved state
+            cleaned_state = strip_module_prefix(state)
+
+            # Count matchable keys by name+shape
+            matched = 0
+            for k, v in cleaned_state.items():
+                if k in hf_state and hasattr(v, 'shape') and v.shape == hf_state[k].shape:
+                    matched += 1
+
+            try:
+                hf_model.load_state_dict(cleaned_state, strict=False)
+                print(f'Loaded matched {matched} keys out of {len(hf_state)} HF model params (approx).')
+                hf_model.to(device)
+                hf_model.eval()
+                return hf_model
+            except Exception as e:
+                print('HF model load failed: {}'.format(e))
+                print('Falling back to local BirdClassifier loader.')
+        except ImportError:
+            print('transformers not installed; cannot auto-load HF checkpoint. Falling back.')
+        except Exception as e:
+            print('Error while attempting HF auto-load: {}'.format(e))
+
+    # Not HF-like or HF path failed: load into local BirdClassifier
     try:
         # Try strict loading first
         model.load_state_dict(state)
@@ -239,9 +324,30 @@ def evaluate_model(model, test_loader, device, return_preds=False):
             
             # Forward pass
             outputs = model(images)
-            
-            # Get predictions (argmax for Top-1)
-            _, predicted = torch.max(outputs, 1)
+
+            # Hugging Face models return a ModelOutput object with a .logits tensor
+            # Accept the following output forms safely:
+            # - transformers.modeling_outputs.ModelOutput (has .logits)
+            # - plain Tensor
+            # - tuple/list where first element is logits
+            if hasattr(outputs, 'logits'):
+                logits = outputs.logits
+            elif isinstance(outputs, (list, tuple)) and len(outputs) > 0:
+                logits = outputs[0]
+            elif isinstance(outputs, torch.Tensor):
+                logits = outputs
+            else:
+                # Fallback: try to coerce to tensor
+                try:
+                    logits = torch.as_tensor(outputs)
+                except Exception:
+                    raise TypeError(f"Unsupported model output type: {type(outputs)}")
+
+            # Get predictions (argmax for Top-1) from logits
+            if logits.dim() == 1:
+                # Single-sample, single-dim logits -> ensure batch dim
+                logits = logits.unsqueeze(0)
+            _, predicted = torch.max(logits, 1)
             
             # Store all predictions and targets
             all_predictions.extend(predicted.cpu().numpy())
@@ -398,6 +504,8 @@ def main():
     parser.add_argument('--split', type=str, default='test', choices=['test','val'], help="Which split to evaluate: 'test' uses data/Test, 'val' uses the validation split from training via create_data_loaders")
     parser.add_argument('--raw-test-mapping', action='store_true', help='If set, use the test file mapping as-is (legacy behavior). Otherwise use training mapping to interpret test labels.')
     parser.add_argument('--save-confusion', action='store_true', help='If set, save confusion matrix CSV and per-class counts to the output directory')
+    parser.add_argument('--force-hf', action='store_true', help='Force constructing the HF model from the hub using --hf-model-id and load checkpoint into it')
+    parser.add_argument('--hf-model-id', type=str, default=None, help='Hugging Face model id to instantiate when forcing HF model load (e.g. Emiel/cub-200-bird-classifier-swin)')
     args = parser.parse_args()
 
     def find_default_checkpoint():
@@ -428,8 +536,14 @@ def main():
         # Use 200 classes to match the saved model
         num_classes = 200  # Your model was trained with 200 classes
 
-        # Load model
-        model = load_model(model_path, num_classes, device)
+        # Load model (forward HF forcing flags)
+        model = load_model(
+            model_path,
+            num_classes,
+            device,
+            force_hf=getattr(args, 'force_hf', False),
+            hf_model_id=getattr(args, 'hf_model_id', None)
+        )
         print("Model loaded successfully.")
 
         # Create loader according to requested split

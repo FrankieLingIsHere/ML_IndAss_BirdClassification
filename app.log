@@ -1,0 +1,9 @@
+2025-10-19 16:10:25,917 INFO: Loading checkpoint from: results\fine_tune\best_model_finetuned.pth
+2025-10-19 16:10:26,639 INFO: Checkpoint sample keys: ['swin.embeddings.patch_embeddings.projection.weight', 'swin.embeddings.patch_embeddings.projection.bias', 'swin.embeddings.norm.weight', 'swin.embeddings.norm.bias', 'swin.encoder.layers.0.blocks.0.layernorm_before.weight', 'swin.encoder.layers.0.blocks.0.layernorm_before.bias', 'swin.encoder.layers.0.blocks.0.attention.self.relative_position_bias_table', 'swin.encoder.layers.0.blocks.0.attention.self.relative_position_index', 'swin.encoder.layers.0.blocks.0.attention.self.query.weight', 'swin.encoder.layers.0.blocks.0.attention.self.query.bias', 'swin.encoder.layers.0.blocks.0.attention.self.key.weight', 'swin.encoder.layers.0.blocks.0.attention.self.key.bias', 'swin.encoder.layers.0.blocks.0.attention.self.value.weight', 'swin.encoder.layers.0.blocks.0.attention.self.value.bias', 'swin.encoder.layers.0.blocks.0.attention.output.dense.weight', 'swin.encoder.layers.0.blocks.0.attention.output.dense.bias']
+2025-10-19 16:10:26,645 INFO: hf_like_checkpoint_detected=True HF_AVAILABLE=True HF_MODEL_ID=not-set
+2025-10-19 16:10:26,645 INFO: HF_MODEL_ID not set; using DEFAULT_HF_ID='Emiel/cub-200-bird-classifier-swin' to attempt hub load
+2025-10-19 16:10:26,645 INFO: Attempting to load Hugging Face model 'Emiel/cub-200-bird-classifier-swin' and apply checkpoint weights...
+2025-10-19 16:10:31,712 INFO: Loaded HF model with non-strict state_dict (missing 0 keys, unexpected 0 keys)
+2025-10-19 16:10:32,093 INFO: HTTP Request: GET http://127.0.0.1:7860/gradio_api/startup-events "HTTP/1.1 200 OK"
+2025-10-19 16:10:32,378 INFO: HTTP Request: HEAD http://127.0.0.1:7860/ "HTTP/1.1 200 OK"
+2025-10-19 16:10:32,668 INFO: HTTP Request: GET https://api.gradio.app/pkg-version "HTTP/1.1 200 OK"

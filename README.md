@@ -165,10 +165,13 @@ python train.py \
 - Restores best weights automatically
 
 ### 3. Data Augmentation
-- Random horizontal flips
-- Random rotation (±15°)
-- Color jitter (brightness, contrast, saturation, hue)
-- Random affine transformations
+The project exposes three augmentation levels: `basic`, `advanced` (the training default), and `heavy`.
+
+- basic: flips, small rotations (±15°), center/resize crop, light color jitter
+- advanced: basic + RandAugment/AutoAugment schedules, probabilistic MixUp/CutMix, mild random crops and (optional) Test-Time Augmentation. This setting balances robustness and label preservation for fine-grained bird classification.
+- heavy: advanced with stronger RandAugment magnitudes and increased MixUp/CutMix probability; use only when label noise is low and diverse imagery is available.
+
+For minority classes prefer targeted oversampling or class-aware augmentation rather than switching the entire training pipeline to `heavy`.
 
 ### 4. Learning Rate Scheduling
 - **Cosine Annealing**: Gradually reduces learning rate

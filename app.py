@@ -399,6 +399,7 @@ This model can classify **199 different bird species** using advanced deep learn
 ### Model Details:
 - **Architecture**: Auto-detected EfficientNet (B2/B3) with enhanced regularization
 - **Training Strategy**: Progressive training with advanced augmentation
+- **Training Strategy**: Progressive training with advanced augmentation — a balanced mix of RandAugment/AutoAugment schedules, probabilistic MixUp/CutMix and mild geometric/color jitter used to improve robustness while preserving fine-grained labels
 - **Performance**: Optimized for accuracy and reliability
 - **Dataset**: CUB-200-2011 (199 bird species)
 
@@ -420,6 +421,7 @@ article = """
 ### Technical Implementation:
 - **Framework**: PyTorch with auto-detected EfficientNet backbone
 - **Training**: Progressive training with advanced augmentation strategies
+- **Training**: Progressive training with advanced augmentation strategies (RandAugment + MixUp/CutMix + mild crops/color jitter)
 - **Regularization**: Optimized dropout rates and comprehensive validation
 - **Image Size**: 320x320 pixels for optimal detail capture
 

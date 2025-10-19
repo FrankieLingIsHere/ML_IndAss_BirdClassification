@@ -2,7 +2,7 @@ import csv
 import os
 from collections import defaultdict
 
-CONF_DIR = os.path.join('results','eval_test_conf')
+CONF_DIR = os.path.join('results','fine_tune','eval')
 CM_FILE = os.path.join(CONF_DIR,'confusion_matrix.csv')
 PC_FILE = os.path.join(CONF_DIR,'per_class_counts.csv')
 
